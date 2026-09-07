@@ -12,20 +12,22 @@ const startServer = async () => {
 		await redisClient.connect();
 		console.log("Connected to Redis");
 
-		// PH Healthcare: await transporter.verify() then crash if fail.
-		// On Render, Gmail SMTP always fails — do not block boot; use BREVO_API_KEY for real mail.
-		if (config.brevo.apiKey) {
-			console.log("Email ready via Brevo API (HTTPS) — use this on Render");
+		if (config.resend.apiKey) {
+			console.log("Email ready via Resend API (HTTPS) — works on Render");
+		} else if (config.brevo.apiKey) {
+			console.log("Email ready via Brevo API (HTTPS) — works on Render");
 		} else if (config.smtp.user && config.smtp.password) {
 			try {
 				await transporter.verify();
 				console.log("Nodemailer Connected Successfully. (Gmail SMTP — same as PH Healthcare)");
 			} catch (smtpError) {
 				console.warn(
-					"Gmail SMTP verify failed (expected on Render free tier). Set BREVO_API_KEY for real email, or demo OTP locally:",
+					"Gmail SMTP verify failed (expected on Render free tier). Set RESEND_API_KEY for real email:",
 					smtpError,
 				);
 			}
+		} else {
+			console.warn("Email not configured — set RESEND_API_KEY on Render for live OTP mail");
 		}
 
 		app.listen(config.port, "0.0.0.0", () => {
