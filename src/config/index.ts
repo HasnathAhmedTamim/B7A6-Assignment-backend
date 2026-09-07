@@ -24,6 +24,16 @@ const envSchema = z.object({
 	ADMIN_PASSWORD: z.string().optional(),
 	SMTP_USER: z.string().optional().default(""),
 	SMTP_PASSWORD: z.string().optional().default(""),
+	/** e.g. smtp-relay.brevo.com — required for real email on Render (Gmail blocked) */
+	SMTP_HOST: z.string().optional().default(""),
+	SMTP_PORT: z.coerce.number().optional().default(587),
+	SMTP_SECURE: z
+		.enum(["true", "false"])
+		.optional()
+		.default("false")
+		.transform((v) => v === "true"),
+	/** From address (must be verified at your email provider) */
+	SMTP_FROM: z.string().optional().default(""),
 	REDIS_USERNAME: z.string().optional().default("default"),
 	REDIS_PASSWORD: z.string().optional().default(""),
 	REDIS_HOST: z.string().optional().default(""),
@@ -88,6 +98,10 @@ const config = {
 	smtp: {
 		user: env.SMTP_USER,
 		password: env.SMTP_PASSWORD,
+		host: env.SMTP_HOST,
+		port: env.SMTP_PORT,
+		secure: env.SMTP_SECURE,
+		from: env.SMTP_FROM || env.SMTP_USER,
 	},
 	redis: {
 		username: env.REDIS_USERNAME,
