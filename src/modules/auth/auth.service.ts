@@ -7,7 +7,7 @@ import httpStatus from "http-status";
 import path from "node:path";
 import type { z } from "zod";
 import config from "../../config/index.js";
-import { transporter } from "../../lib/nodemailer.js";
+import { sendMailWithTimeout } from "../../lib/nodemailer.js";
 import { prisma } from "../../lib/prisma.js";
 import { redisClient } from "../../lib/redis.js";
 import { AppError } from "../../utils/AppError.js";
@@ -339,23 +339,48 @@ const forgotPassword = async (payload: ForgotPasswordInput) => {
 		otp,
 	});
 
-	await transporter.sendMail({
-		from: config.smtp.user,
-		to: email,
-		subject: "Housing Platform — Password Reset OTP",
-		html,
-	});
+	let emailSent = false;
+
+	try {
+		await sendMailWithTimeout({
+			from: config.smtp.user,
+			to: email,
+			subject: "Housing Platform — Password Reset OTP",
+			html,
+		});
+		emailSent = true;
+	} catch (error) {
+		// Render and many hosts block outbound Gmail SMTP — keep OTP usable via API fallback
+		if (!config.allowOtpInResponse) {
+			await redisClient.del(otpKey);
+			throw new AppError(
+				httpStatus.SERVICE_UNAVAILABLE,
+				error instanceof Error
+					? error.message
+					: "Failed to send OTP email. Please try again later.",
+			);
+		}
+		console.warn("SMTP send failed; returning OTP in response for demo:", error);
+	}
 
 	await createAuditLog({
 		userId: user.id,
 		action: "FORGOT_PASSWORD_OTP_SENT",
 		entity: "User",
 		entityId: user.id,
+		metadata: { emailSent },
 	});
 
 	return {
 		email,
 		expiresInSeconds: FORGOT_PASSWORD_OTP_TTL,
+		emailSent,
+		...(emailSent
+			? {}
+			: {
+					otp,
+					note: "Email SMTP unavailable on this host. Use this OTP with /auth/reset-password.",
+				}),
 	};
 };
 

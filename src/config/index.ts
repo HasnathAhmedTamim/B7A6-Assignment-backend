@@ -40,6 +40,12 @@ const envSchema = z.object({
 		.optional()
 		.default("https://tokenized.sandbox.bka.sh/v1.2.0-beta"),
 	BKASH_CALLBACK_URL: z.string().optional().default("http://localhost:5000/api/v1"),
+	/** When SMTP fails (common on Render), return OTP in API body for demo/reset */
+	ALLOW_OTP_IN_RESPONSE: z
+		.enum(["true", "false"])
+		.optional()
+		.default("true")
+		.transform((v) => v === "true"),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -102,6 +108,7 @@ const config = {
 		baseUrl: env.BKASH_BASE_URL,
 		callbackUrl: env.BKASH_CALLBACK_URL,
 	},
+	allowOtpInResponse: env.ALLOW_OTP_IN_RESPONSE,
 	isProduction: env.NODE_ENV === "production",
 };
 
