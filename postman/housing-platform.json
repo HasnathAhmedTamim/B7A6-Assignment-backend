@@ -1,11 +1,12 @@
 {
   "info": {
     "name": "Housing & Roommate Platform API",
-    "description": "B7A6 Housing backend — Stripe payments, 3 roles (ADMIN/LANDLORD/TENANT)",
+    "description": "B7A6 full workflow collection.\n\n## Suggested test order\n1. Auth → Register Landlord + Tenant (or Login Admin)\n2. Copy accessToken into landlordToken / tenantToken / adminToken\n3. Landlord → Create Property (PUBLISHED) → Create Room\n4. Tenant → Create Rental Request\n5. Landlord → Approve Request (creates Booking)\n6. Tenant → Initiate Payment (STRIPE or BKASH)\n7. Admin → Dashboard / Users / Audit logs\n\nGoogle login: get idToken from http://localhost:5000/google-signin\nForgot password: credential users only (not Google-only).",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
     { "key": "baseUrl", "value": "http://localhost:5000/api/v1" },
+    { "key": "rootUrl", "value": "http://localhost:5000" },
     { "key": "accessToken", "value": "" },
     { "key": "refreshToken", "value": "" },
     { "key": "adminToken", "value": "" },
@@ -15,27 +16,53 @@
     { "key": "roomId", "value": "" },
     { "key": "rentalRequestId", "value": "" },
     { "key": "bookingId", "value": "" },
-    { "key": "paymentId", "value": "" }
+    { "key": "paymentId", "value": "" },
+    { "key": "userId", "value": "" },
+    { "key": "otp", "value": "" }
   ],
   "item": [
     {
-      "name": "Health",
+      "name": "0. Health",
       "item": [
         {
           "name": "Health Check",
           "request": {
             "method": "GET",
             "header": [],
-            "url": "{{baseUrl}}/../health"
+            "url": "{{rootUrl}}/health"
+          }
+        },
+        {
+          "name": "API Root",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{rootUrl}}/"
           }
         }
       ]
     },
     {
-      "name": "Auth",
+      "name": "1. Auth",
       "item": [
         {
           "name": "Register Landlord",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const d = pm.response.json().data;",
+                  "  pm.collectionVariables.set('landlordToken', d.accessToken);",
+                  "  pm.collectionVariables.set('accessToken', d.accessToken);",
+                  "  pm.collectionVariables.set('refreshToken', d.refreshToken);",
+                  "}"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
@@ -48,6 +75,22 @@
         },
         {
           "name": "Register Tenant",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const d = pm.response.json().data;",
+                  "  pm.collectionVariables.set('tenantToken', d.accessToken);",
+                  "  pm.collectionVariables.set('accessToken', d.accessToken);",
+                  "  pm.collectionVariables.set('refreshToken', d.refreshToken);",
+                  "}"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
@@ -59,7 +102,79 @@
           }
         },
         {
-          "name": "Login",
+          "name": "Login Admin",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const d = pm.response.json().data;",
+                  "  pm.collectionVariables.set('adminToken', d.accessToken);",
+                  "  pm.collectionVariables.set('accessToken', d.accessToken);",
+                  "  pm.collectionVariables.set('refreshToken', d.refreshToken);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@housing.com\",\n  \"password\": \"ChangeMeAdmin123!\"\n}"
+            },
+            "url": "{{baseUrl}}/auth/login"
+          }
+        },
+        {
+          "name": "Login Landlord",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const d = pm.response.json().data;",
+                  "  pm.collectionVariables.set('landlordToken', d.accessToken);",
+                  "  pm.collectionVariables.set('accessToken', d.accessToken);",
+                  "  pm.collectionVariables.set('refreshToken', d.refreshToken);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"landlord@example.com\",\n  \"password\": \"Password123!\"\n}"
+            },
+            "url": "{{baseUrl}}/auth/login"
+          }
+        },
+        {
+          "name": "Login Tenant",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const d = pm.response.json().data;",
+                  "  pm.collectionVariables.set('tenantToken', d.accessToken);",
+                  "  pm.collectionVariables.set('accessToken', d.accessToken);",
+                  "  pm.collectionVariables.set('refreshToken', d.refreshToken);",
+                  "}"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
@@ -77,9 +192,10 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"idToken\": \"GOOGLE_ID_TOKEN_HERE\"\n}"
+              "raw": "{\n  \"idToken\": \"PASTE_REAL_GOOGLE_ID_TOKEN_FROM_/google-signin\"\n}"
             },
-            "url": "{{baseUrl}}/auth/google"
+            "url": "{{baseUrl}}/auth/google",
+            "description": "Open {{rootUrl}}/google-signin in browser, sign in, copy token here."
           }
         },
         {
@@ -92,6 +208,32 @@
               "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
             },
             "url": "{{baseUrl}}/auth/refresh-token"
+          }
+        },
+        {
+          "name": "Forgot Password",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"tenant@example.com\"\n}"
+            },
+            "url": "{{baseUrl}}/auth/forgot-password",
+            "description": "Sends 6-digit OTP to email (Redis). Google-only users are rejected."
+          }
+        },
+        {
+          "name": "Reset Password",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"tenant@example.com\",\n  \"otp\": \"{{otp}}\",\n  \"newPassword\": \"NewPassword123!\"\n}"
+            },
+            "url": "{{baseUrl}}/auth/reset-password",
+            "description": "Paste OTP from email into collection variable otp."
           }
         },
         {
@@ -112,7 +254,7 @@
       ]
     },
     {
-      "name": "Users",
+      "name": "2. Users",
       "item": [
         {
           "name": "Get Me",
@@ -136,14 +278,47 @@
             },
             "url": "{{baseUrl}}/users/me"
           }
+        },
+        {
+          "name": "Upload Profile Image",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "profileImage",
+                  "type": "file",
+                  "src": [],
+                  "description": "Select an image file"
+                }
+              ]
+            },
+            "url": "{{baseUrl}}/users/profile-image",
+            "description": "Uploads to Cloudinary and replaces previous image."
+          }
         }
       ]
     },
     {
-      "name": "Properties",
+      "name": "3. Properties (Landlord)",
       "item": [
         {
           "name": "Create Property",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  pm.collectionVariables.set('propertyId', pm.response.json().data.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "POST",
             "header": [
@@ -152,23 +327,24 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"title\": \"Sunny Flat in Dhanmondi\",\n  \"description\": \"Spacious 2 bedroom flat near lake with balcony.\",\n  \"address\": \"Road 5, Dhanmondi\",\n  \"city\": \"Dhaka\",\n  \"location\": \"Dhanmondi\",\n  \"monthlyRent\": 25000,\n  \"propertyType\": \"APARTMENT\",\n  \"bedrooms\": 2,\n  \"bathrooms\": 2,\n  \"status\": \"PUBLISHED\"\n}"
+              "raw": "{\n  \"title\": \"Sunny Flat in Dhanmondi\",\n  \"description\": \"Spacious 2 bedroom flat near lake with balcony and natural light.\",\n  \"address\": \"Road 5, Dhanmondi\",\n  \"city\": \"Dhaka\",\n  \"location\": \"Dhanmondi\",\n  \"monthlyRent\": 25000,\n  \"propertyType\": \"APARTMENT\",\n  \"bedrooms\": 2,\n  \"bathrooms\": 2,\n  \"status\": \"PUBLISHED\"\n}"
             },
             "url": "{{baseUrl}}/properties"
           }
         },
         {
-          "name": "List Properties",
+          "name": "List Properties (search/filter/pagination)",
           "request": {
             "method": "GET",
             "header": [],
-            "url": "{{baseUrl}}/properties?page=1&limit=10&search=Dhaka&minRent=5000&maxRent=50000&sortBy=monthlyRent&sortOrder=asc&available=true"
+            "url": "{{baseUrl}}/properties?page=1&limit=10&search=Dhaka&city=Dhaka&minRent=5000&maxRent=50000&propertyType=APARTMENT&available=true&sortBy=monthlyRent&sortOrder=asc"
           }
         },
         {
-          "name": "Get Property",
+          "name": "Get Property By Id",
           "request": {
             "method": "GET",
+            "header": [],
             "url": "{{baseUrl}}/properties/{{propertyId}}"
           }
         },
@@ -182,21 +358,39 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"monthlyRent\": 26000\n}"
+              "raw": "{\n  \"monthlyRent\": 26000,\n  \"status\": \"PUBLISHED\"\n}"
             },
             "url": "{{baseUrl}}/properties/{{propertyId}}"
           }
         },
         {
-          "name": "Delete Property",
+          "name": "Soft Delete Property",
           "request": {
             "method": "DELETE",
             "header": [{ "key": "Authorization", "value": "Bearer {{landlordToken}}" }],
             "url": "{{baseUrl}}/properties/{{propertyId}}"
           }
-        },
+        }
+      ]
+    },
+    {
+      "name": "4. Rooms (Landlord)",
+      "item": [
         {
           "name": "Create Room",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  pm.collectionVariables.set('roomId', pm.response.json().data.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "POST",
             "header": [
@@ -211,17 +405,13 @@
           }
         },
         {
-          "name": "List Rooms",
+          "name": "List Rooms By Property",
           "request": {
             "method": "GET",
+            "header": [],
             "url": "{{baseUrl}}/properties/{{propertyId}}/rooms"
           }
-        }
-      ]
-    },
-    {
-      "name": "Rooms",
-      "item": [
+        },
         {
           "name": "Update Room",
           "request": {
@@ -232,13 +422,13 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"monthlyRent\": 13000\n}"
+              "raw": "{\n  \"monthlyRent\": 13000,\n  \"available\": true\n}"
             },
             "url": "{{baseUrl}}/rooms/{{roomId}}"
           }
         },
         {
-          "name": "Delete Room",
+          "name": "Soft Delete Room",
           "request": {
             "method": "DELETE",
             "header": [{ "key": "Authorization", "value": "Bearer {{landlordToken}}" }],
@@ -248,10 +438,23 @@
       ]
     },
     {
-      "name": "Rental Requests",
+      "name": "5. Rental Requests",
       "item": [
         {
-          "name": "Create Request",
+          "name": "Create Rental Request (Tenant)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  pm.collectionVariables.set('rentalRequestId', pm.response.json().data.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "POST",
             "header": [
@@ -260,13 +463,13 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"propertyId\": \"{{propertyId}}\",\n  \"roomId\": \"{{roomId}}\",\n  \"message\": \"Looking for a quiet room.\",\n  \"startDate\": \"2026-10-01T00:00:00.000Z\"\n}"
+              "raw": "{\n  \"propertyId\": \"{{propertyId}}\",\n  \"roomId\": \"{{roomId}}\",\n  \"message\": \"Looking for a quiet room starting next month.\",\n  \"startDate\": \"2026-10-01T00:00:00.000Z\",\n  \"endDate\": \"2027-10-01T00:00:00.000Z\"\n}"
             },
             "url": "{{baseUrl}}/rental-requests"
           }
         },
         {
-          "name": "My Requests",
+          "name": "My Requests (Tenant)",
           "request": {
             "method": "GET",
             "header": [{ "key": "Authorization", "value": "Bearer {{tenantToken}}" }],
@@ -274,7 +477,7 @@
           }
         },
         {
-          "name": "Received Requests",
+          "name": "Received Requests (Landlord)",
           "request": {
             "method": "GET",
             "header": [{ "key": "Authorization", "value": "Bearer {{landlordToken}}" }],
@@ -282,7 +485,23 @@
           }
         },
         {
-          "name": "Approve Request",
+          "name": "Approve Request (creates Booking)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const d = pm.response.json().data;",
+                  "  if (d.booking && d.booking.id) {",
+                  "    pm.collectionVariables.set('bookingId', d.booking.id);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "PATCH",
             "header": [{ "key": "Authorization", "value": "Bearer {{landlordToken}}" }],
@@ -298,7 +517,7 @@
           }
         },
         {
-          "name": "Cancel Request",
+          "name": "Cancel Request (Tenant)",
           "request": {
             "method": "PATCH",
             "header": [{ "key": "Authorization", "value": "Bearer {{tenantToken}}" }],
@@ -308,10 +527,26 @@
       ]
     },
     {
-      "name": "Bookings",
+      "name": "6. Bookings",
       "item": [
         {
           "name": "My Bookings",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const list = pm.response.json().data;",
+                  "  if (Array.isArray(list) && list.length > 0) {",
+                  "    pm.collectionVariables.set('bookingId', list[0].id);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "GET",
             "header": [{ "key": "Authorization", "value": "Bearer {{tenantToken}}" }],
@@ -319,7 +554,7 @@
           }
         },
         {
-          "name": "Get Booking",
+          "name": "Get Booking By Id",
           "request": {
             "method": "GET",
             "header": [{ "key": "Authorization", "value": "Bearer {{tenantToken}}" }],
@@ -337,10 +572,27 @@
       ]
     },
     {
-      "name": "Payments",
+      "name": "7. Payments",
       "item": [
         {
           "name": "Initiate Stripe Payment",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const d = pm.response.json().data;",
+                  "  if (d.payment && d.payment.id) {",
+                  "    pm.collectionVariables.set('paymentId', d.payment.id);",
+                  "  }",
+                  "  console.log('Stripe checkoutUrl:', d.checkoutUrl);",
+                  "}"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "POST",
             "header": [
@@ -351,7 +603,50 @@
               "mode": "raw",
               "raw": "{\n  \"bookingId\": \"{{bookingId}}\",\n  \"gateway\": \"STRIPE\"\n}"
             },
-            "url": "{{baseUrl}}/payments/initiate"
+            "url": "{{baseUrl}}/payments/initiate",
+            "description": "Open checkoutUrl in browser. Keep `stripe listen` running for webhook."
+          }
+        },
+        {
+          "name": "Initiate bKash Payment",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const d = pm.response.json().data;",
+                  "  if (d.payment && d.payment.id) {",
+                  "    pm.collectionVariables.set('paymentId', d.payment.id);",
+                  "  }",
+                  "  console.log('bKash checkoutUrl:', d.checkoutUrl);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{tenantToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"bookingId\": \"{{bookingId}}\",\n  \"gateway\": \"BKASH\"\n}"
+            },
+            "url": "{{baseUrl}}/payments/initiate",
+            "description": "Open checkoutUrl. Sandbox wallet 01770618575, OTP 123456, PIN 12121. For callback locally use ngrok + BKASH_CALLBACK_URL."
+          }
+        },
+        {
+          "name": "bKash Callback (docs only)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/payments/bkash/callback?paymentID=PAYMENT_ID&status=success",
+            "description": "Called by bKash after payment. Do not call manually unless debugging."
           }
         },
         {
@@ -363,7 +658,7 @@
           }
         },
         {
-          "name": "Get Payment",
+          "name": "Get Payment By Id",
           "request": {
             "method": "GET",
             "header": [{ "key": "Authorization", "value": "Bearer {{tenantToken}}" }],
@@ -373,10 +668,26 @@
       ]
     },
     {
-      "name": "Admin",
+      "name": "8. Admin",
       "item": [
         {
           "name": "List Users",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const list = pm.response.json().data;",
+                  "  if (Array.isArray(list) && list.length > 0) {",
+                  "    pm.collectionVariables.set('userId', list[0].id);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "GET",
             "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
@@ -393,9 +704,9 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"status\": \"BLOCKED\"\n}"
+              "raw": "{\n  \"status\": \"ACTIVE\"\n}"
             },
-            "url": "{{baseUrl}}/admin/users/USER_ID/status"
+            "url": "{{baseUrl}}/admin/users/{{userId}}/status"
           }
         },
         {
@@ -408,9 +719,9 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"role\": \"LANDLORD\"\n}"
+              "raw": "{\n  \"role\": \"TENANT\"\n}"
             },
-            "url": "{{baseUrl}}/admin/users/USER_ID/role"
+            "url": "{{baseUrl}}/admin/users/{{userId}}/role"
           }
         },
         {
@@ -427,6 +738,57 @@
             "method": "GET",
             "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
             "url": "{{baseUrl}}/admin/audit-logs?page=1&limit=20"
+          }
+        }
+      ]
+    },
+    {
+      "name": "9. Full Happy Path (run in order)",
+      "description": "Manual checklist folder — run requests top to bottom for demo video.",
+      "item": [
+        {
+          "name": "A. Login Admin",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@housing.com\",\n  \"password\": \"ChangeMeAdmin123!\"\n}"
+            },
+            "url": "{{baseUrl}}/auth/login"
+          }
+        },
+        {
+          "name": "B. Login Landlord",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"landlord@example.com\",\n  \"password\": \"Password123!\"\n}"
+            },
+            "url": "{{baseUrl}}/auth/login"
+          }
+        },
+        {
+          "name": "C. Login Tenant",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"tenant@example.com\",\n  \"password\": \"Password123!\"\n}"
+            },
+            "url": "{{baseUrl}}/auth/login"
+          }
+        },
+        {
+          "name": "D. Create Property + Room + Request + Approve + Pay",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/properties?page=1&limit=5",
+            "description": "After logging in roles above, use folders 3→7 in order: Create Property → Create Room → Create Request → Approve → Initiate Payment."
           }
         }
       ]
