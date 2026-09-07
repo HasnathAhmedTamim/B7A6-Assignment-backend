@@ -139,93 +139,112 @@ const getReceivedRequests = async (user: AuthUser) => {
 };
 
 const approveRequest = async (requestId: string, user: AuthUser) => {
-	return prisma.$transaction(async (tx) => {
-		const request = await tx.rentalRequest.findUnique({
-			where: { id: requestId },
-			include: {
-				property: true,
-				room: true,
-				booking: true,
-			},
-		});
-
-		if (!request) {
-			throw new AppError(httpStatus.NOT_FOUND, "Rental request not found");
-		}
-
-		if (user.role !== Role.ADMIN && request.property.ownerId !== user.id) {
-			throw new AppError(httpStatus.FORBIDDEN, "You can only approve requests for your properties");
-		}
-
-		if (request.status !== RentalRequestStatus.PENDING) {
-			throw new AppError(
-				httpStatus.CONFLICT,
-				`Cannot approve a request with status ${request.status}`,
-			);
-		}
-
-		if (!request.room.available || request.room.deletedAt) {
-			throw new AppError(httpStatus.CONFLICT, "Room is no longer available");
-		}
-
-		const conflictingBooking = await tx.booking.findFirst({
-			where: {
-				roomId: request.roomId,
-				deletedAt: null,
-				status: {
-					in: [BookingStatus.PENDING_PAYMENT, BookingStatus.CONFIRMED],
-				},
-			},
-		});
-
-		if (conflictingBooking) {
-			throw new AppError(httpStatus.CONFLICT, "Room already has an active booking");
-		}
-
-		const updatedRequest = await tx.rentalRequest.update({
-			where: { id: requestId },
-			data: { status: RentalRequestStatus.APPROVED },
-		});
-
-		await tx.room.update({
-			where: { id: request.roomId },
-			data: { available: false },
-		});
-
-		const booking = await tx.booking.create({
-			data: {
-				tenantId: request.tenantId,
-				propertyId: request.propertyId,
-				roomId: request.roomId,
-				rentalRequestId: request.id,
-				startDate: request.startDate,
-				endDate: request.endDate,
-				rentAmount: request.room.monthlyRent,
-				status: BookingStatus.PENDING_PAYMENT,
-			},
-		});
-
-		await tx.auditLog.create({
-			data: {
-				userId: user.id,
-				action: "RENTAL_REQUEST_APPROVED",
-				entity: "RentalRequest",
-				entityId: requestId,
-				metadata: { bookingId: booking.id },
-			},
-		});
-
-		await tx.auditLog.create({
-			data: {
-				userId: user.id,
-				action: "BOOKING_CREATED",
-				entity: "Booking",
-				entityId: booking.id,
-			},
-		});
-
-		return { request: updatedRequest, booking };
+	const request = await prisma.rentalRequest.findUnique({
+		where: { id: requestId },
+		include: {
+			property: true,
+			room: true,
+			booking: true,
+		},
 	});
+
+	if (!request) {
+		throw new AppError(httpStatus.NOT_FOUND, "Rental request not found");
+	}
+
+	if (user.role !== Role.ADMIN && request.property.ownerId !== user.id) {
+		throw new AppError(httpStatus.FORBIDDEN, "You can only approve requests for your properties");
+	}
+
+	if (request.status !== RentalRequestStatus.PENDING) {
+		throw new AppError(
+			httpStatus.CONFLICT,
+			`Cannot approve a request with status ${request.status}`,
+		);
+	}
+
+	if (!request.room.available || request.room.deletedAt) {
+		throw new AppError(httpStatus.CONFLICT, "Room is no longer available");
+	}
+
+	const conflictingBooking = await prisma.booking.findFirst({
+		where: {
+			roomId: request.roomId,
+			deletedAt: null,
+			status: {
+				in: [BookingStatus.PENDING_PAYMENT, BookingStatus.CONFIRMED],
+			},
+		},
+	});
+
+	if (conflictingBooking) {
+		throw new AppError(httpStatus.CONFLICT, "Room already has an active booking");
+	}
+
+	return prisma.$transaction(
+		async (tx) => {
+			const locked = await tx.rentalRequest.findUnique({
+				where: { id: requestId },
+				include: { room: true },
+			});
+
+			if (!locked || locked.status !== RentalRequestStatus.PENDING) {
+				throw new AppError(httpStatus.CONFLICT, "Rental request is no longer pending");
+			}
+
+			if (!locked.room.available) {
+				throw new AppError(httpStatus.CONFLICT, "Room is no longer available");
+			}
+
+			const updatedRequest = await tx.rentalRequest.update({
+				where: { id: requestId },
+				data: { status: RentalRequestStatus.APPROVED },
+			});
+
+			await tx.room.update({
+				where: { id: request.roomId },
+				data: { available: false },
+			});
+
+			const booking = await tx.booking.create({
+				data: {
+					tenantId: request.tenantId,
+					propertyId: request.propertyId,
+					roomId: request.roomId,
+					rentalRequestId: request.id,
+					startDate: request.startDate,
+					endDate: request.endDate,
+					rentAmount: request.room.monthlyRent,
+					status: BookingStatus.PENDING_PAYMENT,
+				},
+			});
+
+			await tx.auditLog.create({
+				data: {
+					userId: user.id,
+					action: "RENTAL_REQUEST_APPROVED",
+					entity: "RentalRequest",
+					entityId: requestId,
+					metadata: { bookingId: booking.id },
+				},
+			});
+
+			await tx.auditLog.create({
+				data: {
+					userId: user.id,
+					action: "BOOKING_CREATED",
+					entity: "Booking",
+					entityId: booking.id,
+				},
+			});
+
+			return { request: updatedRequest, booking };
+		},
+		{
+			maxWait: 10000,
+			timeout: 20000,
+		},
+	);
 };
 
 const rejectRequest = async (requestId: string, user: AuthUser) => {
