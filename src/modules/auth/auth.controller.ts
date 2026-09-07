@@ -77,11 +77,16 @@ const logout = catchAsync(async (req: Request, res: Response) => {
 
 const forgotPassword = catchAsync(async (req: Request, res: Response) => {
 	const data = await AuthService.forgotPassword(req.body);
+	const redirected =
+		Boolean(data.emailSent) &&
+		typeof data.deliveredTo === "string" &&
+		data.deliveredTo !== data.email;
+
 	sendResponse({
 		res,
 		statusCode: httpStatus.OK,
 		message: data.emailSent
-			? data.deliveredTo && data.deliveredTo !== data.email
+			? redirected
 				? `OTP emailed to ${data.deliveredTo} (Resend test redirect for ${data.email})`
 				: "OTP sent to your email"
 			: "OTP generated — email not delivered; use otp from response",

@@ -78,7 +78,10 @@ const sendViaResendApi = async (options: SendMailOptions): Promise<SendMailResul
 	const timer = setTimeout(() => controller.abort(), 15_000);
 
 	try {
-		const attempt = async (to: string, redirected: boolean) => {
+		type AttemptOk = SendMailResult;
+		type AttemptFail = { ok: false; status: number; body: string; to: string };
+
+		const attempt = async (to: string, redirected: boolean): Promise<AttemptOk | AttemptFail> => {
 			const html = redirected
 				? wrapRedirectedHtml(intendedTo, htmlBody(options.html))
 				: htmlBody(options.html);
@@ -96,18 +99,18 @@ const sendViaResendApi = async (options: SendMailOptions): Promise<SendMailResul
 
 			if (response.ok) {
 				return {
-					provider: "resend" as const,
+					provider: "resend",
 					deliveredTo: to,
 					intendedTo,
 					redirected,
 				};
 			}
 
-			return { ok: false as const, status: response.status, body, to };
+			return { ok: false, status: response.status, body, to };
 		};
 
 		const first = await attempt(preferredTo, preferredTo !== intendedTo);
-		if ("provider" in first) {
+		if (!("ok" in first)) {
 			return first;
 		}
 
@@ -116,7 +119,7 @@ const sendViaResendApi = async (options: SendMailOptions): Promise<SendMailResul
 			const allowed = parseResendAllowedTo(first.body);
 			if (allowed && allowed !== first.to) {
 				const second = await attempt(allowed, true);
-				if ("provider" in second) {
+				if (!("ok" in second)) {
 					return second;
 				}
 				throw new Error(`Resend API ${second.status}: ${second.body}`);

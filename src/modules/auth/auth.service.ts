@@ -378,10 +378,10 @@ const forgotPassword = async (payload: ForgotPasswordInput) => {
 		return {
 			email,
 			expiresInSeconds: FORGOT_PASSWORD_OTP_TTL,
-			emailSent: true,
+			emailSent: true as const,
+			deliveredTo: deliveredTo ?? email,
 			...(deliveredTo && deliveredTo !== email
 				? {
-						deliveredTo,
 						note: `Resend testing delivered the OTP for ${email} to ${deliveredTo}. Use the code from that email.`,
 					}
 				: {}),
@@ -391,7 +391,8 @@ const forgotPassword = async (payload: ForgotPasswordInput) => {
 	return {
 		email,
 		expiresInSeconds: FORGOT_PASSWORD_OTP_TTL,
-		emailSent: false,
+		emailSent: false as const,
+		deliveredTo: undefined as string | undefined,
 		otp,
 		note: "Email could not be delivered. Use this OTP with /auth/reset-password (it matches Redis).",
 	};
