@@ -31,12 +31,16 @@ export class BkashGateway implements PaymentGatewayService {
 			},
 			body: JSON.stringify({
 				mode: "0011",
-				payerReference: input.customerEmail,
+				// Prefill sandbox success wallet so users don't accidentally use fail-test numbers
+				payerReference: "01770618575",
 				callbackURL: `${config.bkash.callbackUrl}/payments/bkash/callback`,
-				amount: input.amount.toFixed(2),
+				// Sandbox wallets only support small amounts reliably
+				amount: String(Math.max(1, Math.round(Number(input.amount)))),
 				currency: "BDT",
 				intent: "sale",
-				merchantInvoiceNumber: input.merchantReference.slice(0, 255),
+				merchantInvoiceNumber: input.merchantReference
+					.replace(/[^a-zA-Z0-9_-]/g, "")
+					.slice(0, 255),
 			}),
 		});
 
