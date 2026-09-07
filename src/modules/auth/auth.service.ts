@@ -1,10 +1,15 @@
-import { Role, UserStatus } from "@prisma/client";
+import { AuthProvider, Role, UserStatus } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import crypto from "node:crypto";
+import ejs from "ejs";
 import { OAuth2Client } from "google-auth-library";
 import httpStatus from "http-status";
+import path from "node:path";
 import type { z } from "zod";
 import config from "../../config/index.js";
+import { transporter } from "../../lib/nodemailer.js";
 import { prisma } from "../../lib/prisma.js";
+import { redisClient } from "../../lib/redis.js";
 import { AppError } from "../../utils/AppError.js";
 import { createAuditLog } from "../../utils/audit.js";
 import {
@@ -13,11 +18,19 @@ import {
 	signRefreshToken,
 	verifyRefreshToken,
 } from "../../utils/jwt.js";
-import type { googleLoginSchema, loginSchema, registerSchema } from "./auth.schema.js";
+import type {
+	forgotPasswordSchema,
+	googleLoginSchema,
+	loginSchema,
+	registerSchema,
+	resetPasswordSchema,
+} from "./auth.schema.js";
 
 type RegisterInput = z.infer<typeof registerSchema>;
 type LoginInput = z.infer<typeof loginSchema>;
 type GoogleLoginInput = z.infer<typeof googleLoginSchema>;
+type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
+type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
 
 const googleClient = new OAuth2Client(config.google.clientId);
 
@@ -28,10 +41,14 @@ const userPublicSelect = {
 	phone: true,
 	role: true,
 	status: true,
+	authProvider: true,
+	emailVerified: true,
 	profileImage: true,
 	createdAt: true,
 	updatedAt: true,
 } as const;
+
+const FORGOT_PASSWORD_OTP_TTL = 5 * 60;
 
 const parseDurationToMs = (value: string) => {
 	const match = /^(\d+)([smhd])$/.exec(value);
@@ -89,6 +106,8 @@ const register = async (payload: RegisterInput) => {
 			password: hashedPassword,
 			phone: payload.phone,
 			role: payload.role,
+			authProvider: AuthProvider.CREDENTIAL,
+			emailVerified: true,
 		},
 		select: userPublicSelect,
 	});
@@ -176,6 +195,8 @@ const googleLogin = async (payload: GoogleLoginInput) => {
 				googleId: googlePayload.sub,
 				profileImage: googlePayload.picture,
 				role: Role.TENANT,
+				authProvider: AuthProvider.GOOGLE,
+				emailVerified: true,
 			},
 		});
 
@@ -191,6 +212,9 @@ const googleLogin = async (payload: GoogleLoginInput) => {
 			data: {
 				googleId: googlePayload.sub,
 				profileImage: user.profileImage ?? googlePayload.picture,
+				emailVerified: true,
+				// Keep CREDENTIAL if they already have a password; otherwise mark GOOGLE
+				authProvider: user.password ? user.authProvider : AuthProvider.GOOGLE,
 			},
 		});
 	}
@@ -281,10 +305,112 @@ const logout = async (userId: string, refreshToken?: string) => {
 	});
 };
 
+const forgotPassword = async (payload: ForgotPasswordInput) => {
+	const email = payload.email.trim().toLowerCase();
+
+	const user = await prisma.user.findFirst({
+		where: { email, deletedAt: null },
+	});
+
+	if (!user) {
+		throw new AppError(httpStatus.NOT_FOUND, "User not found");
+	}
+
+	if (!user.emailVerified) {
+		throw new AppError(httpStatus.BAD_REQUEST, "Email is not verified");
+	}
+
+	// Google-only accounts have no local password — cannot reset via OTP
+	if (!user.password || user.authProvider === AuthProvider.GOOGLE) {
+		throw new AppError(
+			httpStatus.BAD_REQUEST,
+			"Google accounts cannot use forgot password. Sign in with Google instead.",
+		);
+	}
+
+	const otp = crypto.randomInt(100000, 1000000).toString();
+	const otpKey = `forgot-password-otp:${email}`;
+
+	await redisClient.set(otpKey, otp, { EX: FORGOT_PASSWORD_OTP_TTL });
+
+	const templatePath = path.join(process.cwd(), "src/templates/forgot-password-otp.ejs");
+	const html = await ejs.renderFile(templatePath, {
+		name: user.name,
+		otp,
+	});
+
+	await transporter.sendMail({
+		from: config.smtp.user,
+		to: email,
+		subject: "Housing Platform — Password Reset OTP",
+		html,
+	});
+
+	await createAuditLog({
+		userId: user.id,
+		action: "FORGOT_PASSWORD_OTP_SENT",
+		entity: "User",
+		entityId: user.id,
+	});
+
+	return {
+		email,
+		expiresInSeconds: FORGOT_PASSWORD_OTP_TTL,
+	};
+};
+
+const resetPassword = async (payload: ResetPasswordInput) => {
+	const email = payload.email.trim().toLowerCase();
+	const otpKey = `forgot-password-otp:${email}`;
+	const storedOtp = await redisClient.get(otpKey);
+
+	if (!storedOtp || storedOtp !== payload.otp) {
+		throw new AppError(httpStatus.BAD_REQUEST, "Invalid or expired OTP");
+	}
+
+	const user = await prisma.user.findFirst({
+		where: { email, deletedAt: null },
+	});
+
+	if (!user) {
+		throw new AppError(httpStatus.NOT_FOUND, "User not found");
+	}
+
+	if (!user.password || user.authProvider === AuthProvider.GOOGLE) {
+		throw new AppError(
+			httpStatus.BAD_REQUEST,
+			"Google accounts cannot reset password this way",
+		);
+	}
+
+	const hashedPassword = await bcrypt.hash(payload.newPassword, config.bcryptSaltRounds);
+
+	await prisma.user.update({
+		where: { id: user.id },
+		data: { password: hashedPassword },
+	});
+
+	await redisClient.del(otpKey);
+
+	await prisma.refreshToken.updateMany({
+		where: { userId: user.id, revokedAt: null },
+		data: { revokedAt: new Date() },
+	});
+
+	await createAuditLog({
+		userId: user.id,
+		action: "PASSWORD_RESET",
+		entity: "User",
+		entityId: user.id,
+	});
+};
+
 export const AuthService = {
 	register,
 	login,
 	googleLogin,
 	refresh,
 	logout,
+	forgotPassword,
+	resetPassword,
 };

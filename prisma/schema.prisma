@@ -67,18 +67,26 @@ enum PaymentGateway {
   BKASH
 }
 
+enum AuthProvider {
+  CREDENTIAL
+  GOOGLE
+}
+
 model User {
-  id           String     @id @default(uuid())
+  id           String       @id @default(uuid())
   name         String
-  email        String     @unique
+  email        String       @unique
   password     String?
   phone        String?
-  role         Role       @default(TENANT)
-  status       UserStatus @default(ACTIVE)
+  role         Role         @default(TENANT)
+  status       UserStatus   @default(ACTIVE)
+  authProvider AuthProvider @default(CREDENTIAL)
+  emailVerified Boolean     @default(false)
   profileImage String?
-  googleId     String?    @unique
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
+  imagePublicId String?
+  googleId     String?      @unique
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
   deletedAt    DateTime?
 
   properties     Property[]

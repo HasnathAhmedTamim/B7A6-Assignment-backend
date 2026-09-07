@@ -21,3 +21,13 @@ export const googleLoginSchema = z.object({
 export const refreshTokenSchema = z.object({
 	refreshToken: z.string().min(10).optional(),
 });
+
+export const forgotPasswordSchema = z.object({
+	email: z.string().trim().email().toLowerCase(),
+});
+
+export const resetPasswordSchema = z.object({
+	email: z.string().trim().email().toLowerCase(),
+	otp: z.string().length(6),
+	newPassword: z.string().min(8).max(128),
+});

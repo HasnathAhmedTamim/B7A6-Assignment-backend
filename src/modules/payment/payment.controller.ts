@@ -9,7 +9,7 @@ const initiatePayment = catchAsync(async (req: Request, res: Response) => {
 	sendResponse({
 		res,
 		statusCode: httpStatus.OK,
-		message: "Stripe checkout session created",
+		message: "Payment checkout created",
 		data,
 	});
 });
@@ -27,6 +27,13 @@ const stripeWebhook = catchAsync(async (req: Request, res: Response) => {
 		message: "Webhook processed",
 		data,
 	});
+});
+
+const bkashCallback = catchAsync(async (req: Request, res: Response) => {
+	const result = await PaymentService.handleBkashCallback(
+		req.query as Record<string, string | undefined>,
+	);
+	res.redirect(result.redirectUrl);
 });
 
 const getMyPayments = catchAsync(async (req: Request, res: Response) => {
@@ -52,6 +59,7 @@ const getPaymentById = catchAsync(async (req: Request, res: Response) => {
 export const PaymentController = {
 	initiatePayment,
 	stripeWebhook,
+	bkashCallback,
 	getMyPayments,
 	getPaymentById,
 };

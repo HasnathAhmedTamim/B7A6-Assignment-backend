@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { PrismaClient, Role, UserStatus } from "@prisma/client";
+import { AuthProvider, PrismaClient, Role, UserStatus } from "@prisma/client";
 import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
@@ -22,6 +22,8 @@ async function main() {
 			password: hashedPassword,
 			role: Role.ADMIN,
 			status: UserStatus.ACTIVE,
+			authProvider: AuthProvider.CREDENTIAL,
+			emailVerified: true,
 			deletedAt: null,
 		},
 		create: {
@@ -30,6 +32,8 @@ async function main() {
 			password: hashedPassword,
 			role: Role.ADMIN,
 			status: UserStatus.ACTIVE,
+			authProvider: AuthProvider.CREDENTIAL,
+			emailVerified: true,
 		},
 	});
 

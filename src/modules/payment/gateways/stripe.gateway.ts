@@ -25,8 +25,8 @@ export class StripeGateway implements PaymentGatewayService {
 		const session = await this.stripe.checkout.sessions.create({
 			mode: "payment",
 			customer_email: input.customerEmail,
-			success_url: input.successUrl,
-			cancel_url: input.cancelUrl,
+			success_url: input.successUrl ?? config.stripe.successUrl,
+			cancel_url: input.cancelUrl ?? config.stripe.cancelUrl,
 			client_reference_id: input.merchantReference,
 			metadata: input.metadata,
 			line_items: [

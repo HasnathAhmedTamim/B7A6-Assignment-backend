@@ -9,6 +9,7 @@ import { initiatePaymentSchema, paymentIdSchema } from "./payment.schema.js";
 const router = Router();
 
 router.post("/webhook", express.raw({ type: "application/json" }), PaymentController.stripeWebhook);
+router.get("/bkash/callback", PaymentController.bkashCallback);
 
 router.post(
 	"/initiate",

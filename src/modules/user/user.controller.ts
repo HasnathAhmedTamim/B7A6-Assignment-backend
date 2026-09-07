@@ -24,7 +24,21 @@ const updateMe = catchAsync(async (req: Request, res: Response) => {
 	});
 });
 
+const uploadProfileImage = catchAsync(async (req: Request, res: Response) => {
+	const user = await UserService.uploadProfileImage(
+		req.user!.id,
+		req.file as Express.Multer.File | undefined,
+	);
+	sendResponse({
+		res,
+		statusCode: httpStatus.OK,
+		message: "Profile image updated successfully",
+		data: user,
+	});
+});
+
 export const UserController = {
 	getMe,
 	updateMe,
+	uploadProfileImage,
 };
