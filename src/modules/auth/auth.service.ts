@@ -340,17 +340,19 @@ const forgotPassword = async (payload: ForgotPasswordInput) => {
 	});
 
 	let emailSent = false;
+	let deliveredTo: string | undefined;
 
 	try {
-		await sendMailWithTimeout({
+		const mail = await sendMailWithTimeout({
 			from: config.smtp.from || config.smtp.user,
 			to: email,
 			subject: "Forgot Password",
 			html,
 		});
 		emailSent = true;
+		deliveredTo = mail.deliveredTo;
 	} catch (error) {
-		// Render and many hosts block outbound Gmail SMTP — keep OTP usable via API fallback
+		// Keep OTP usable via API fallback when delivery fails
 		if (!config.allowOtpInResponse) {
 			await redisClient.del(otpKey);
 			throw new AppError(
@@ -360,7 +362,7 @@ const forgotPassword = async (payload: ForgotPasswordInput) => {
 					: "Failed to send OTP email. Please try again later.",
 			);
 		}
-		console.warn("SMTP send failed; returning OTP in response for demo:", error);
+		console.warn("OTP email send failed; returning OTP in response for demo:", error);
 	}
 
 	await createAuditLog({
@@ -368,19 +370,30 @@ const forgotPassword = async (payload: ForgotPasswordInput) => {
 		action: "FORGOT_PASSWORD_OTP_SENT",
 		entity: "User",
 		entityId: user.id,
-		metadata: { emailSent },
+		metadata: { emailSent, deliveredTo },
 	});
+
+	// When email succeeds, OTP is only in the inbox (same value as Redis) — never also in JSON
+	if (emailSent) {
+		return {
+			email,
+			expiresInSeconds: FORGOT_PASSWORD_OTP_TTL,
+			emailSent: true,
+			...(deliveredTo && deliveredTo !== email
+				? {
+						deliveredTo,
+						note: `Resend testing delivered the OTP for ${email} to ${deliveredTo}. Use the code from that email.`,
+					}
+				: {}),
+		};
+	}
 
 	return {
 		email,
 		expiresInSeconds: FORGOT_PASSWORD_OTP_TTL,
-		emailSent,
-		...(emailSent
-			? {}
-			: {
-					otp,
-					note: "Email SMTP unavailable on this host. Use this OTP with /auth/reset-password.",
-				}),
+		emailSent: false,
+		otp,
+		note: "Email could not be delivered. Use this OTP with /auth/reset-password (it matches Redis).",
 	};
 };
 

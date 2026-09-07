@@ -13,13 +13,17 @@ const startServer = async () => {
 		console.log("Connected to Redis");
 
 		if (config.resend.apiKey) {
-			console.log("Email ready via Resend API (HTTPS) — works on Render");
+			console.log(
+				config.resend.testTo
+					? `Email ready via Resend API (HTTPS) — OTP redirect to ${config.resend.testTo}`
+					: "Email ready via Resend API (HTTPS) — works on Render",
+			);
 		} else if (config.brevo.apiKey) {
 			console.log("Email ready via Brevo API (HTTPS) — works on Render");
 		} else if (config.smtp.user && config.smtp.password) {
 			try {
 				await transporter.verify();
-				console.log("Nodemailer Connected Successfully. (Gmail SMTP — same as PH Healthcare)");
+				console.log("Nodemailer Connected Successfully.");
 			} catch (smtpError) {
 				console.warn(
 					"Gmail SMTP verify failed (expected on Render free tier). Set RESEND_API_KEY for real email:",

@@ -41,6 +41,11 @@ const envSchema = z.object({
 	RESEND_API_KEY: z.string().optional().default(""),
 	/** Resend from address (use onboarding@resend.dev until you verify a domain) */
 	RESEND_FROM: z.string().optional().default("Housing Platform <onboarding@resend.dev>"),
+	/**
+	 * Resend free / onboarding@resend.dev can only deliver to your account email.
+	 * When set, OTP emails are redirected there (same OTP as Redis) so demo inboxes match.
+	 */
+	RESEND_TEST_TO: z.string().optional().default(""),
 	REDIS_USERNAME: z.string().optional().default("default"),
 	REDIS_PASSWORD: z.string().optional().default(""),
 	REDIS_HOST: z.string().optional().default(""),
@@ -116,6 +121,7 @@ const config = {
 	resend: {
 		apiKey: env.RESEND_API_KEY,
 		from: env.RESEND_FROM,
+		testTo: env.RESEND_TEST_TO.trim().toLowerCase(),
 	},
 	redis: {
 		username: env.REDIS_USERNAME,

@@ -81,8 +81,10 @@ const forgotPassword = catchAsync(async (req: Request, res: Response) => {
 		res,
 		statusCode: httpStatus.OK,
 		message: data.emailSent
-			? "OTP sent to your email"
-			: "OTP generated (email SMTP unavailable — use otp from response)",
+			? data.deliveredTo && data.deliveredTo !== data.email
+				? `OTP emailed to ${data.deliveredTo} (Resend test redirect for ${data.email})`
+				: "OTP sent to your email"
+			: "OTP generated — email not delivered; use otp from response",
 		data,
 	});
 });
