@@ -2,6 +2,8 @@ import cookieParser from "cookie-parser";
 import cors from "cors";
 import express, { type Application } from "express";
 import rateLimit from "express-rate-limit";
+import fs from "node:fs";
+import path from "node:path";
 import helmet from "helmet";
 import httpStatus from "http-status";
 import config from "./config/index.js";
@@ -14,7 +16,21 @@ const app: Application = express();
 
 app.set("trust proxy", 1);
 
-app.use(helmet());
+app.use(
+	helmet({
+		contentSecurityPolicy: {
+			directives: {
+				defaultSrc: ["'self'"],
+				scriptSrc: ["'self'", "'unsafe-inline'", "https://accounts.google.com"],
+				frameSrc: ["'self'", "https://accounts.google.com"],
+				connectSrc: ["'self'", "https://accounts.google.com"],
+				styleSrc: ["'self'", "'unsafe-inline'", "https://accounts.google.com"],
+				imgSrc: ["'self'", "data:", "https:"],
+			},
+		},
+		crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
+	}),
+);
 app.use(
 	cors({
 		origin: config.corsOrigin.split(",").map((origin) => origin.trim()),
@@ -54,6 +70,15 @@ app.get("/health", (_req, res) => {
 		message: "Server is healthy",
 		data: { status: "ok" },
 	});
+});
+
+// Dev helper: get a real Google ID token for Postman testing
+app.get("/google-signin", (_req, res) => {
+	const templatePath = path.join(process.cwd(), "public", "google-signin.html");
+	const html = fs
+		.readFileSync(templatePath, "utf8")
+		.replaceAll("__GOOGLE_CLIENT_ID__", config.google.clientId || "");
+	res.status(httpStatus.OK).type("html").send(html);
 });
 
 app.get("/", (_req, res) => {
