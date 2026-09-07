@@ -9,7 +9,7 @@ A production-oriented REST API that lets landlords publish housing inventory, te
 | **Repository** | [HasnathAhmedTamim/B7A6-Assignment-backend](https://github.com/HasnathAhmedTamim/B7A6-Assignment-backend) |
 | **API base** | `/api/v1` |
 | **API Docs** | [Postman Documenter](https://documenter.getpostman.com/view/31892953/2sBYAxP9Sg) |
-| **Live** | Deploy on Render (see [Deployment](#deployment-render)) |
+| **Live** | [b7a6-assignment-backend.onrender.com](https://b7a6-assignment-backend.onrender.com) · API `/api/v1` |
 
 ---
 
@@ -24,8 +24,9 @@ A production-oriented REST API that lets landlords publish housing inventory, te
 7. [Project structure](#project-structure)
 8. [Getting started](#getting-started)
 9. [Payments](#payments)
-10. [Deployment (Render)](#deployment-render)
-11. [Demo credentials](#demo-credentials)
+10. [Email & OTP (forgot password)](#email--otp-forgot-password)
+11. [Deployment (Render)](#deployment-render)
+12. [Demo credentials](#demo-credentials)
 
 ---
 
@@ -35,7 +36,9 @@ A production-oriented REST API that lets landlords publish housing inventory, te
 - Email/password register & login with bcrypt password hashing
 - Google OAuth (ID token verification via Google Auth Library)
 - JWT **access** + **refresh** tokens; logout invalidates refresh tokens
-- Forgot / reset password with **6-digit OTP** (Redis TTL) emailed via **Nodemailer + EJS**
+- Forgot / reset password with **6-digit OTP** (Redis TTL) + **EJS** template
+  - **Local:** Gmail SMTP (Nodemailer)
+  - **Render:** **Resend** HTTPS API (SMTP ports are blocked on free tier)
 - Profile read/update and **Cloudinary** profile image upload (Multer)
 
 ### Roles & security (RBAC)
@@ -75,7 +78,7 @@ A production-oriented REST API that lets landlords publish housing inventory, te
 | Validation | Zod | Request schema validation |
 | Auth | JWT, bcrypt, Google Auth Library | Credentials + social login |
 | Cache / OTP | Redis | Temporary forgot-password codes |
-| Email | Nodemailer + EJS | Transactional OTP emails |
+| Email | Resend (Render) / Gmail SMTP (local) + EJS | Forgot-password OTP |
 | Files | Multer + Cloudinary | Profile image storage |
 | Payments | Stripe, bKash | Real checkout + status callbacks |
 | Security | Helmet, CORS, express-rate-limit | Hardening & abuse protection |
@@ -209,8 +212,8 @@ Helpers: `GET /health`, `GET /`, `GET /google-signin` (dev Google ID token page)
 | `POST` | `/auth/google` | Public | Google ID token login |
 | `POST` | `/auth/refresh-token` | Public | Rotate access token |
 | `POST` | `/auth/logout` | Auth | Invalidate refresh token |
-| `POST` | `/auth/forgot-password` | Public | Send OTP email |
-| `POST` | `/auth/reset-password` | Public | Reset with OTP |
+| `POST` | `/auth/forgot-password` | Public | Send OTP email (see [Email & OTP](#email--otp-forgot-password)) |
+| `POST` | `/auth/reset-password` | Public | Reset with OTP + new password |
 
 ### Users
 
@@ -305,7 +308,7 @@ backend/
 │   └── set-bkash-test-amount.ts
 ├── src/
 │   ├── app.ts                 # Express app: security, routes, errors
-│   ├── server.ts              # Boot: Prisma, Redis, SMTP, listen
+│   ├── server.ts              # Boot: Prisma, Redis, email readiness, listen
 │   ├── config/index.ts        # Zod-validated env → typed config
 │   ├── routes/index.ts        # Mounts all /api/v1 modules
 │   ├── middlewares/
@@ -372,7 +375,15 @@ STRIPE_SECRET_KEY=sk_test_...
 STRIPE_WEBHOOK_SECRET=whsec_...
 ```
 
-Optional (enable related features): Google, Redis, SMTP, Cloudinary, bKash — see `.env.example`.
+**Email (local Gmail):**
+
+```env
+SMTP_USER=you@gmail.com
+SMTP_PASSWORD=xxxx xxxx xxxx xxxx   # Google App Password
+SMTP_FROM=you@gmail.com
+```
+
+**Email (Render — Resend):** see [Email & OTP](#email--otp-forgot-password). Also set Redis, Cloudinary, Google, bKash as needed — full list in `.env.example`.
 
 ### 3. Database
 
@@ -436,6 +447,37 @@ Notes:
 
 ---
 
+## Email & OTP (forgot password)
+
+Flow: `POST /auth/forgot-password` → 6-digit OTP stored in **Redis** (5 min TTL) → email via EJS template → `POST /auth/reset-password` with `{ email, otp, newPassword }`.
+
+### Local (Gmail SMTP)
+
+Works on your PC with a [Google App Password](https://myaccount.google.com/apppasswords). Same pattern as many Node demos (Nodemailer `service: "gmail"`).
+
+### Render (Resend HTTPS)
+
+Render **free** web services block outbound SMTP (`25` / `465` / `587`), so Gmail SMTP times out in production. This API uses **[Resend](https://resend.com)** over HTTPS (`443`) instead.
+
+| Env var | Example | Purpose |
+|---------|---------|---------|
+| `RESEND_API_KEY` | `re_...` | Resend API key |
+| `RESEND_FROM` | `Housing Platform <onboarding@resend.dev>` | Sender (use until you verify a domain) |
+| `RESEND_TEST_TO` | `you@gmail.com` | **Required on free Resend** — redirect all OTP emails to your Resend account email |
+| `ALLOW_OTP_IN_RESPONSE` | `true` | If send fails, return `otp` in the JSON body for demo |
+
+**Why `RESEND_TEST_TO`?** With `onboarding@resend.dev`, Resend only delivers to the email on your Resend account. Without a verified custom domain, mail to `tenant@gmail.com` / `*@example.com` is rejected. Setting `RESEND_TEST_TO` to your account inbox delivers the **same OTP** that Redis stores; the email notes which account it is for.
+
+**Successful send** (`emailSent: true`): OTP is **only in email** (not in the API body). Check `deliveredTo` if it differs from the requested address.
+
+**Failed send** (`emailSent: false`): use `data.otp` from the response with `/auth/reset-password`.
+
+Boot log when configured: `Email ready via Resend API (HTTPS) — OTP redirect to …`
+
+Optional fallback: `BREVO_API_KEY` (Brevo HTTPS) if you prefer Brevo over Resend.
+
+---
+
 ## Deployment (Render)
 
 1. Push `main` to GitHub.
@@ -448,7 +490,17 @@ Notes:
 | Pre-Deploy | `npx prisma migrate deploy` |
 | Start | `npm start` |
 
-4. Set production env vars (`DATABASE_URL`, `DIRECT_URL`, JWT, Stripe, Redis, SMTP, Cloudinary, bKash, etc.).
+4. Set production env vars: `DATABASE_URL`, `DIRECT_URL`, JWT, Stripe, Redis, Cloudinary, bKash, **and email**:
+
+```env
+RESEND_API_KEY=re_...
+RESEND_FROM=Housing Platform <onboarding@resend.dev>
+RESEND_TEST_TO=your-resend-account@gmail.com
+ALLOW_OTP_IN_RESPONSE=true
+```
+
+Do **not** rely on Gmail `SMTP_*` for live OTP on Render free tier.
+
 5. After deploy:
    - `BACKEND_URL=https://YOUR-SERVICE.onrender.com`
    - `BKASH_CALLBACK_URL=https://YOUR-SERVICE.onrender.com/api/v1`
