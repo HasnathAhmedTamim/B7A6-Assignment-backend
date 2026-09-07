@@ -32,9 +32,10 @@ const envSchema = z.object({
 		.optional()
 		.default("false")
 		.transform((v) => v === "true"),
-	/** From address (must be verified at your email provider) */
+	/** From address (PH Healthcare: EMAIL_SENDER) */
 	SMTP_FROM: z.string().optional().default(""),
-	/** Brevo HTTPS API key — use on Render (SMTP ports are blocked on free tier) */
+	EMAIL_SENDER: z.string().optional().default(""),
+	/** Brevo HTTPS API key — required for real email on Render free tier */
 	BREVO_API_KEY: z.string().optional().default(""),
 	REDIS_USERNAME: z.string().optional().default("default"),
 	REDIS_PASSWORD: z.string().optional().default(""),
@@ -103,7 +104,7 @@ const config = {
 		host: env.SMTP_HOST,
 		port: env.SMTP_PORT,
 		secure: env.SMTP_SECURE,
-		from: env.SMTP_FROM || env.SMTP_USER,
+		from: env.SMTP_FROM || env.EMAIL_SENDER || env.SMTP_USER,
 	},
 	brevo: {
 		apiKey: env.BREVO_API_KEY,

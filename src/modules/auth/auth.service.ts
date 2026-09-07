@@ -345,7 +345,7 @@ const forgotPassword = async (payload: ForgotPasswordInput) => {
 		await sendMailWithTimeout({
 			from: config.smtp.from || config.smtp.user,
 			to: email,
-			subject: "Housing Platform — Password Reset OTP",
+			subject: "Forgot Password",
 			html,
 		});
 		emailSent = true;
