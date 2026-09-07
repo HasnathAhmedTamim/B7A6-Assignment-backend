@@ -8,7 +8,7 @@ A production-oriented REST API that lets landlords publish housing inventory, te
 |---|---|
 | **Repository** | [HasnathAhmedTamim/B7A6-Assignment-backend](https://github.com/HasnathAhmedTamim/B7A6-Assignment-backend) |
 | **API base** | `/api/v1` |
-| **Docs / testing** | Postman collection · no frontend required |
+| **API Docs** | [Postman Documenter](https://documenter.getpostman.com/view/31892953/2sBYAxP9Sg) |
 | **Live** | Deploy on Render (see [Deployment](#deployment-render)) |
 
 ---
@@ -403,7 +403,9 @@ npm run dev
 
 ### Postman
 
-Import `postman/housing-platform.json`. Set `baseUrl` to `http://localhost:5000/api/v1`, then follow folders **0 → 7** (Auth → Property → Rental → Payment → Admin).
+- **Published docs:** [Housing & Roommate Platform API](https://documenter.getpostman.com/view/31892953/2sBYAxP9Sg)
+- **Collection file:** import `postman/housing-platform.json`
+- Set `baseUrl` to `http://localhost:5000/api/v1` (or your live URL + `/api/v1`), then follow folders **0 → 7** (Auth → Property → Rental → Payment → Admin).
 
 ---
 
