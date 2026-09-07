@@ -1,69 +1,75 @@
 # Housing & Roommate Management Platform
 
-**Backend API** · Level-2 Batch-7 Assignment (B7A6) · Student ID ends in **6**
+**Backend REST API** · Programming Hero Level-2 · Batch-7 · Assignment **B7A6**
 
-A production-oriented REST API that lets landlords publish housing inventory, tenants request rooms and complete real payments, and admins oversee users and platform activity.
+A modular Express API for landlords to publish properties and rooms, tenants to search, apply, and pay online, and admins to manage users and audit activity.
 
-| | |
-|---|---|
+---
+
+## Submission
+
+| Field | Link / value |
+|-------|----------------|
+| **Project** | Housing & Roommate Management Platform |
 | **Repository** | [HasnathAhmedTamim/B7A6-Assignment-backend](https://github.com/HasnathAhmedTamim/B7A6-Assignment-backend) |
-| **API base** | `/api/v1` |
-| **API Docs** | [Postman Documenter](https://documenter.getpostman.com/view/31892953/2sBYAxP9Sg) |
-| **Live** | [b7a6-assignment-backend.onrender.com](https://b7a6-assignment-backend.onrender.com) · API `/api/v1` |
+| **Live API** | [https://b7a6-assignment-backend.onrender.com](https://b7a6-assignment-backend.onrender.com) |
+| **API base path** | `/api/v1` |
+| **Health check** | [GET /health](https://b7a6-assignment-backend.onrender.com/health) |
+| **API documentation** | [Postman Documenter](https://documenter.getpostman.com/view/31892953/2sBYAxP9Sg) |
+| **Demo video** | [Google Drive (assignment6-backend.mp4)](https://drive.google.com/file/d/1r1RS6bkx_p_TJbu0j-YgWuVCGmfh-GA1/view?usp=sharing) |
+
+> Free Render instances may take 30–60 seconds to wake after idle. Hit `/health` once before testing.
 
 ---
 
 ## Table of contents
 
-1. [What is implemented](#what-is-implemented)
+1. [Features](#features)
 2. [Tech stack](#tech-stack)
-3. [How it works](#how-it-works)
+3. [Architecture](#architecture)
 4. [Business workflow](#business-workflow)
 5. [API response format](#api-response-format)
 6. [API reference](#api-reference)
 7. [Project structure](#project-structure)
 8. [Getting started](#getting-started)
 9. [Payments](#payments)
-10. [Email & OTP (forgot password)](#email--otp-forgot-password)
-11. [Deployment (Render)](#deployment-render)
-12. [Demo credentials](#demo-credentials)
+10. [Email & OTP](#email--otp)
+11. [Deployment](#deployment)
+12. [License](#license)
 
 ---
 
-## What is implemented
+## Features
 
 ### Authentication & users
-- Email/password register & login with bcrypt password hashing
-- Google OAuth (ID token verification via Google Auth Library)
-- JWT **access** + **refresh** tokens; logout invalidates refresh tokens
-- Forgot / reset password with **6-digit OTP** (Redis TTL) + **EJS** template
-  - **Local:** Gmail SMTP (Nodemailer)
-  - **Render:** **Resend** HTTPS API (SMTP ports are blocked on free tier)
-- Profile read/update and **Cloudinary** profile image upload (Multer)
+- Email/password registration and login (bcrypt)
+- Google sign-in (ID token verification)
+- JWT access + refresh tokens; logout invalidates refresh tokens
+- Forgot / reset password with Redis OTP (5-minute TTL) and EJS email template
+- Profile update and Cloudinary profile image upload (Multer)
 
-### Roles & security (RBAC)
-- Three fixed roles: `ADMIN`, `LANDLORD`, `TENANT`
-- Bearer JWT auth + role middleware on every protected route
-- Helmet security headers, CORS, express-rate-limit
-- Zod validation on bodies, params, and queries
-- Soft deletes (`deletedAt`) instead of hard deletes for core entities
-- Audit logs for critical admin / payment / booking actions
+### Security & quality
+- Three roles: `ADMIN`, `LANDLORD`, `TENANT` with strict RBAC
+- Bearer JWT on protected routes
+- Helmet, CORS, and `express-rate-limit`
+- Zod validation on request bodies, params, and queries
+- Soft deletes (`deletedAt`) and audit logs for critical actions
 
 ### Housing domain
-- Properties & rooms CRUD (landlord-owned)
-- Public listing with **search**, **filter**, **sort**, and **pagination**
-- Tenant rental requests → landlord approve / reject → tenant cancel
-- Approve runs inside a **Prisma interactive transaction**: marks room unavailable and creates a booking (`PENDING_PAYMENT`) to avoid double-booking
+- Property and room CRUD (landlord-owned)
+- Public listings with search, filter, sort, and pagination
+- Rental requests: create → approve / reject / cancel
+- Approve uses a Prisma interactive transaction (room locked + booking created) to prevent double-booking
 
-### Payments (mandatory)
-- **Stripe** Checkout Session + signed webhook → `PAID` / booking `CONFIRMED`
+### Payments
+- **Stripe** Checkout Session + signed webhook
 - **bKash** Tokenized Checkout (sandbox) + execute callback
-- Gateway abstraction (`StripeGateway` | `BkashGateway`) behind one initiate API
-- Payment history for tenants; status tracking for all roles with access
+- Shared gateway interface behind `POST /payments/initiate`
+- Payment history and status tracking (`PENDING` → `PAID` / `FAILED` / `CANCELLED`)
 
 ### Admin
-- List users, update status (`ACTIVE` / `BLOCKED`) and role
-- Dashboard aggregate stats
+- User list, status (`ACTIVE` / `BLOCKED`), and role updates
+- Dashboard aggregate statistics
 - Paginated audit logs
 
 ---
@@ -72,83 +78,77 @@ A production-oriented REST API that lets landlords publish housing inventory, te
 
 | Layer | Technology | Purpose |
 |-------|------------|---------|
-| Runtime | Node.js, TypeScript | Typed server runtime |
-| Framework | Express 5 | HTTP routing & middleware |
-| Database | PostgreSQL (Neon) + Prisma | Relational data, migrations, transactions |
-| Validation | Zod | Request schema validation |
+| Runtime | Node.js, TypeScript | Typed server |
+| Framework | Express 5 | HTTP API |
+| Database | PostgreSQL (Neon) + Prisma | Relations, migrations, transactions |
+| Validation | Zod | Request schemas |
 | Auth | JWT, bcrypt, Google Auth Library | Credentials + social login |
-| Cache / OTP | Redis | Temporary forgot-password codes |
-| Email | Resend (Render) / Gmail SMTP (local) + EJS | Forgot-password OTP |
-| Files | Multer + Cloudinary | Profile image storage |
-| Payments | Stripe, bKash | Real checkout + status callbacks |
-| Security | Helmet, CORS, express-rate-limit | Hardening & abuse protection |
+| Cache | Redis | OTP storage, bKash token cache |
+| Email | Resend (production) / Gmail SMTP (local) + EJS | Transactional OTP |
+| Files | Multer + Cloudinary | Profile images |
+| Payments | Stripe, bKash | Real checkout + callbacks |
+| Security | Helmet, CORS, express-rate-limit | Hardening |
 | Quality | Biome | Lint / format |
-| Docs | Postman | Interactive API collection |
-| Deploy | Render | Hosted Node web service |
+| Docs | Postman | Collection + published docs |
+| Hosting | Render | Production web service |
 
 ---
 
-## How it works
+## Architecture
 
-Request pipeline:
+**Style:** modular monolith — each domain owns `route` → `controller` → `service` → `schema`.
 
 ```text
 Client (Postman)
   → Helmet / CORS / Rate limit
-  → JSON body (except Stripe raw webhook)
-  → Route (/api/v1/...)
+  → JSON body (Stripe webhook uses raw body)
+  → /api/v1/...
   → Zod validation
-  → authenticate (JWT) + authorize (role)
+  → JWT authenticate + RBAC authorize
   → Controller
-  → Service (business rules + Prisma transactions)
+  → Service (business rules + Prisma)
   → PostgreSQL
   → sendResponse / globalErrorHandler
 ```
 
-Payment path:
+**Payment path:**
 
 ```text
 POST /payments/initiate { bookingId, gateway }
-  → create PENDING Payment row
-  → StripeCheckout URL  or  bKash bkashURL
-  → user pays on provider UI
+  → Payment row (PENDING)
+  → Stripe checkoutUrl  or  bKash checkoutUrl
+  → User pays on provider UI
   → Stripe webhook  or  bKash callback
   → Payment PAID + Booking CONFIRMED (+ audit log)
 ```
-
-Architecture style: **modular monolith** — each domain owns `route` → `controller` → `service` → `schema`, with shared middlewares, libs, and utils.
 
 ---
 
 ## Business workflow
 
 ```text
-1. ADMIN seeds / manages users
-2. LANDLORD registers → creates Property (PUBLISHED) → adds Room(s)
+1. ADMIN is seeded; manages users and audits
+2. LANDLORD registers → creates Property → adds Room(s)
 3. TENANT browses GET /properties (?search&city&minRent&page…)
-4. TENANT POST /rental-requests for a room
+4. TENANT submits POST /rental-requests
 5. LANDLORD PATCH .../approve
-      └─ transaction: request APPROVED, room available=false, booking PENDING_PAYMENT
+      └─ transaction: APPROVED + room unavailable + booking PENDING_PAYMENT
 6. TENANT POST /payments/initiate { gateway: "STRIPE" | "BKASH" }
 7. Completes provider checkout
-8. Webhook/callback confirms → booking CONFIRMED
+8. Webhook / callback → booking CONFIRMED
 9. ADMIN reviews dashboard, users, audit logs
 ```
 
-### Status transitions
-
-| Entity | Typical path |
-|--------|----------------|
+| Entity | Typical status path |
+|--------|---------------------|
 | Rental request | `PENDING` → `APPROVED` / `REJECTED` / `CANCELLED` |
 | Room | `available: true` → `false` on approve |
-| Booking | `PENDING_PAYMENT` → `CONFIRMED` (after pay) or `CANCELLED` |
+| Booking | `PENDING_PAYMENT` → `CONFIRMED` or `CANCELLED` |
 | Payment | `PENDING` → `PAID` / `FAILED` / `CANCELLED` |
 
 ---
 
 ## API response format
-
-All versioned APIs use a consistent JSON envelope.
 
 ### Success
 
@@ -166,8 +166,7 @@ All versioned APIs use a consistent JSON envelope.
 }
 ```
 
-- `meta` is present on paginated list endpoints.
-- `data` holds the payload (object, array, or `null`).
+`meta` appears on paginated lists. `data` may be an object, array, or `null`.
 
 ### Error
 
@@ -181,16 +180,14 @@ All versioned APIs use a consistent JSON envelope.
 }
 ```
 
-| Case | HTTP | Notes |
-|------|------|--------|
-| Validation (Zod) | `400` | `errors[]` with field paths |
-| Unauthorized | `401` | Missing/invalid token |
-| Forbidden | `403` | Wrong role or ownership |
-| Not found | `404` | Resource missing / soft-deleted |
-| Conflict | `409` | Invalid state (e.g. already approved) |
-| Server error | `500` | Generic message in production |
-
-### Auth header
+| HTTP | Case |
+|------|------|
+| `400` | Validation (Zod) |
+| `401` | Missing or invalid token |
+| `403` | Wrong role or ownership |
+| `404` | Missing or soft-deleted resource |
+| `409` | Invalid state (e.g. already approved) |
+| `500` | Unexpected server error |
 
 ```http
 Authorization: Bearer <accessToken>
@@ -200,8 +197,12 @@ Authorization: Bearer <accessToken>
 
 ## API reference
 
-Base URL: `http://localhost:5000/api/v1`  
-Helpers: `GET /health`, `GET /`, `GET /google-signin` (dev Google ID token page)
+| Environment | Base URL |
+|-------------|----------|
+| Local | `http://localhost:5000/api/v1` |
+| Production | `https://b7a6-assignment-backend.onrender.com/api/v1` |
+
+Helpers: `GET /health`, `GET /`, `GET /google-signin` (dev Google ID token helper).
 
 ### Auth
 
@@ -212,7 +213,7 @@ Helpers: `GET /health`, `GET /`, `GET /google-signin` (dev Google ID token page)
 | `POST` | `/auth/google` | Public | Google ID token login |
 | `POST` | `/auth/refresh-token` | Public | Rotate access token |
 | `POST` | `/auth/logout` | Auth | Invalidate refresh token |
-| `POST` | `/auth/forgot-password` | Public | Send OTP email (see [Email & OTP](#email--otp-forgot-password)) |
+| `POST` | `/auth/forgot-password` | Public | Send OTP email |
 | `POST` | `/auth/reset-password` | Public | Reset with OTP + new password |
 
 ### Users
@@ -220,55 +221,54 @@ Helpers: `GET /health`, `GET /`, `GET /google-signin` (dev Google ID token page)
 | Method | Path | Access | Description |
 |--------|------|--------|-------------|
 | `GET` | `/users/me` | Auth | Current profile |
-| `PATCH` | `/users/me` | Auth | Update profile fields |
-| `PATCH` | `/users/profile-image` | Auth | Multipart `profileImage` → Cloudinary |
+| `PATCH` | `/users/me` | Auth | Update profile |
+| `PATCH` | `/users/profile-image` | Auth | Upload `profileImage` → Cloudinary |
 
 ### Properties & rooms
 
 | Method | Path | Access | Description |
 |--------|------|--------|-------------|
-| `GET` | `/properties` | Public | List + search/filter/sort/pagination |
+| `GET` | `/properties` | Public | List + search / filter / sort / pagination |
 | `GET` | `/properties/:id` | Public | Property detail |
-| `POST` | `/properties` | Landlord/Admin | Create property |
-| `PATCH` | `/properties/:id` | Owner/Admin | Update |
-| `DELETE` | `/properties/:id` | Owner/Admin | Soft delete |
-| `POST` | `/properties/:propertyId/rooms` | Owner/Admin | Add room |
+| `POST` | `/properties` | Landlord / Admin | Create |
+| `PATCH` | `/properties/:id` | Owner / Admin | Update |
+| `DELETE` | `/properties/:id` | Owner / Admin | Soft delete |
+| `POST` | `/properties/:propertyId/rooms` | Owner / Admin | Add room |
 | `GET` | `/properties/:propertyId/rooms` | Public | List rooms |
-| `PATCH` | `/rooms/:id` | Owner/Admin | Update room |
-| `DELETE` | `/rooms/:id` | Owner/Admin | Soft delete room |
+| `PATCH` | `/rooms/:id` | Owner / Admin | Update room |
+| `DELETE` | `/rooms/:id` | Owner / Admin | Soft delete room |
 
-**List query examples:** `?page=1&limit=10&search=gulshan&city=Dhaka&minRent=5000&maxRent=20000&propertyType=APARTMENT&available=true&sortBy=monthlyRent&sortOrder=asc`
+Query example:  
+`?page=1&limit=10&search=gulshan&city=Dhaka&minRent=5000&maxRent=20000&propertyType=APARTMENT&available=true&sortBy=monthlyRent&sortOrder=asc`
 
 ### Rental requests
 
 | Method | Path | Access | Description |
 |--------|------|--------|-------------|
 | `POST` | `/rental-requests` | Tenant | Create request |
-| `GET` | `/rental-requests/my` | Tenant/Admin | My requests |
-| `GET` | `/rental-requests/received` | Landlord/Admin | Incoming requests |
-| `PATCH` | `/rental-requests/:id/approve` | Landlord/Admin | Approve → booking |
-| `PATCH` | `/rental-requests/:id/reject` | Landlord/Admin | Reject |
-| `PATCH` | `/rental-requests/:id/cancel` | Tenant/Admin | Cancel pending |
+| `GET` | `/rental-requests/my` | Tenant / Admin | My requests |
+| `GET` | `/rental-requests/received` | Landlord / Admin | Incoming requests |
+| `PATCH` | `/rental-requests/:id/approve` | Landlord / Admin | Approve → booking |
+| `PATCH` | `/rental-requests/:id/reject` | Landlord / Admin | Reject |
+| `PATCH` | `/rental-requests/:id/cancel` | Tenant / Admin | Cancel pending |
 
 ### Bookings
 
 | Method | Path | Access | Description |
 |--------|------|--------|-------------|
-| `GET` | `/bookings/my` | Auth (roles) | My bookings |
-| `GET` | `/bookings/:id` | Auth (roles) | Booking detail |
-| `PATCH` | `/bookings/:id/cancel` | Auth (roles) | Cancel booking |
+| `GET` | `/bookings/my` | Auth | My bookings |
+| `GET` | `/bookings/:id` | Auth | Booking detail |
+| `PATCH` | `/bookings/:id/cancel` | Auth | Cancel booking |
 
 ### Payments
 
 | Method | Path | Access | Description |
 |--------|------|--------|-------------|
-| `POST` | `/payments/initiate` | Tenant/Admin | Start Stripe or bKash checkout |
+| `POST` | `/payments/initiate` | Tenant / Admin | Start Stripe or bKash |
 | `POST` | `/payments/webhook` | Stripe | Signed webhook (raw body) |
-| `GET` | `/payments/bkash/callback` | bKash | Execute + finalize payment |
-| `GET` | `/payments/my` | Tenant/Admin | My payments |
-| `GET` | `/payments/:id` | Auth (roles) | Payment detail |
-
-Initiate body:
+| `GET` | `/payments/bkash/callback` | bKash | Execute + finalize |
+| `GET` | `/payments/my` | Tenant / Admin | My payments |
+| `GET` | `/payments/:id` | Auth | Payment detail |
 
 ```json
 {
@@ -277,7 +277,7 @@ Initiate body:
 }
 ```
 
-`gateway` may be `"STRIPE"` (default) or `"BKASH"`. Response includes `checkoutUrl`.
+`gateway`: `"STRIPE"` (default) or `"BKASH"`. Response includes `checkoutUrl`.
 
 ### Admin
 
@@ -296,54 +296,46 @@ Initiate body:
 ```text
 backend/
 ├── prisma/
-│   ├── schema.prisma          # Models, enums, indexes, soft-delete fields
-│   ├── migrations/            # SQL migrations for deploy
-│   ├── seed.ts                # Demo ADMIN from ADMIN_EMAIL / ADMIN_PASSWORD
-│   └── tsconfig.json          # Editor types for seed scripts
+│   ├── schema.prisma              # Models, enums, indexes, soft deletes
+│   ├── migrations/                # SQL migrations
+│   └── seed.ts                    # Demo ADMIN
 ├── postman/
-│   └── housing-platform.json  # Full workflow collection
+│   └── housing-platform.json      # Full API collection
 ├── public/
-│   └── google-signin.html     # Dev helper to obtain Google idToken
+│   └── google-signin.html         # Dev Google idToken helper
 ├── scripts/
 │   └── set-bkash-test-amount.ts
 ├── src/
-│   ├── app.ts                 # Express app: security, routes, errors
-│   ├── server.ts              # Boot: Prisma, Redis, email readiness, listen
-│   ├── config/index.ts        # Zod-validated env → typed config
-│   ├── routes/index.ts        # Mounts all /api/v1 modules
-│   ├── middlewares/
-│   │   ├── auth.middleware.ts       # JWT Bearer authentication
-│   │   ├── rbac.middleware.ts       # Role authorization
-│   │   ├── validation.middleware.ts # Zod request validation
-│   │   ├── error.middleware.ts      # Global error → JSON envelope
-│   │   └── notFound.middleware.ts
-│   ├── modules/               # Feature modules (route/controller/service/schema)
+│   ├── app.ts                     # Express: security, routes, errors
+│   ├── server.ts                  # Boot: Prisma, Redis, email, listen
+│   ├── config/index.ts            # Zod-validated env
+│   ├── routes/index.ts            # /api/v1 module mount
+│   ├── middlewares/               # auth, rbac, validation, errors
+│   ├── modules/
 │   │   ├── auth/
 │   │   ├── user/
-│   │   ├── property/          # properties + rooms
+│   │   ├── property/              # properties + rooms
 │   │   ├── rentalRequest/
 │   │   ├── booking/
 │   │   ├── payment/
-│   │   │   └── gateways/      # stripe.gateway.ts, bkash.gateway.ts, interface
+│   │   │   └── gateways/          # Stripe, bKash, interface
 │   │   └── admin/
-│   ├── lib/                   # prisma, redis, nodemailer, cloudinary, multer, bkash
-│   ├── templates/             # EJS email templates
-│   ├── types/                 # AuthUser, Express augmentations
-│   └── utils/                 # AppError, catchAsync, jwt, sendResponse, audit
+│   ├── lib/                       # prisma, redis, email, cloudinary, multer, bkash
+│   ├── templates/                 # EJS email templates
+│   ├── types/
+│   └── utils/                     # AppError, jwt, sendResponse, audit
 ├── .env.example
 ├── package.json
 └── README.md
 ```
 
-### Module file roles
-
-| File | Responsibility |
-|------|----------------|
-| `*.route.ts` | Paths, HTTP methods, middleware chain |
-| `*.controller.ts` | Parse HTTP → call service → `sendResponse` |
-| `*.service.ts` | Business rules, Prisma queries/transactions |
-| `*.schema.ts` | Zod schemas for body / params / query |
-| `gateways/*` | Payment provider adapters (same interface) |
+| File pattern | Responsibility |
+|--------------|----------------|
+| `*.route.ts` | Paths, methods, middleware |
+| `*.controller.ts` | HTTP ↔ service ↔ `sendResponse` |
+| `*.service.ts` | Business rules, Prisma, transactions |
+| `*.schema.ts` | Zod body / params / query |
+| `gateways/*` | Payment provider adapters |
 
 ---
 
@@ -362,11 +354,11 @@ npm install
 cp .env.example .env
 ```
 
-Configure at least:
+Minimum required:
 
 ```env
 DATABASE_URL="postgresql://..."
-DIRECT_URL="postgresql://..."          # Neon non-pooler URL (transactions)
+DIRECT_URL="postgresql://..."
 JWT_ACCESS_SECRET=...
 JWT_REFRESH_SECRET=...
 ADMIN_EMAIL=admin@housing.com
@@ -375,15 +367,16 @@ STRIPE_SECRET_KEY=sk_test_...
 STRIPE_WEBHOOK_SECRET=whsec_...
 ```
 
-**Email (local Gmail):**
+**Local email (Gmail App Password):**
 
 ```env
 SMTP_USER=you@gmail.com
-SMTP_PASSWORD=xxxx xxxx xxxx xxxx   # Google App Password
+SMTP_PASSWORD=xxxx xxxx xxxx xxxx
 SMTP_FROM=you@gmail.com
 ```
 
-**Email (Render — Resend):** see [Email & OTP](#email--otp-forgot-password). Also set Redis, Cloudinary, Google, bKash as needed — full list in `.env.example`.
+**Production email (Resend):** see [Email & OTP](#email--otp).  
+Also configure Redis, Cloudinary, Google, and bKash as needed — see `.env.example`.
 
 ### 3. Database
 
@@ -401,11 +394,9 @@ npm run dev
 - Health: `http://localhost:5000/health`
 - Google helper: `http://localhost:5000/google-signin`
 
-### Scripts
-
 | Command | Purpose |
 |---------|---------|
-| `npm run dev` | Dev server (tsx watch) |
+| `npm run dev` | Development server (tsx watch) |
 | `npm run build` | `prisma generate` + `tsc` |
 | `npm start` | Run `dist/server.js` |
 | `npm run db:seed` | Seed demo admin |
@@ -414,9 +405,9 @@ npm run dev
 
 ### Postman
 
-- **Published docs:** [Housing & Roommate Platform API](https://documenter.getpostman.com/view/31892953/2sBYAxP9Sg)
-- **Collection file:** import `postman/housing-platform.json`
-- Set `baseUrl` to `http://localhost:5000/api/v1` (or your live URL + `/api/v1`), then follow folders **0 → 7** (Auth → Property → Rental → Payment → Admin).
+1. Import `postman/housing-platform.json`, or use the [published docs](https://documenter.getpostman.com/view/31892953/2sBYAxP9Sg).
+2. Set `baseUrl` to local or `https://b7a6-assignment-backend.onrender.com/api/v1`.
+3. Walk folders **0 → 7** (Auth → Property → Rental → Payment → Admin).
 
 ---
 
@@ -424,65 +415,62 @@ npm run dev
 
 ### Stripe
 
-1. `POST /payments/initiate` with `"gateway": "STRIPE"`
-2. Open `checkoutUrl`; pay with test card `4242 4242 4242 4242`
-3. Forward webhooks locally:
+1. `POST /payments/initiate` with `"gateway": "STRIPE"`.
+2. Open `checkoutUrl`; pay with test card `4242 4242 4242 4242`.
+3. Local webhooks:
 
 ```bash
 stripe listen --forward-to localhost:5000/api/v1/payments/webhook
 ```
 
-4. Webhook verifies signature → payment `PAID`, booking `CONFIRMED`
+4. Signed webhook → payment `PAID`, booking `CONFIRMED`.
 
 ### bKash (sandbox)
 
-1. `POST /payments/initiate` with `"gateway": "BKASH"`
-2. Open `checkoutUrl`
-3. Typical sandbox wallet: `01770618575` · OTP `123456` · PIN `12121`
-4. Callback: `GET /api/v1/payments/bkash/callback`
+1. `POST /payments/initiate` with `"gateway": "BKASH"`.
+2. Open `checkoutUrl`.
+3. Typical sandbox: wallet `01770618575` · OTP `123456` · PIN `12121`.
+4. Callback: `GET /api/v1/payments/bkash/callback`.
 
-Notes:
-- Prefer small sandbox amounts; some wallets return “Insufficient balance” due to sandbox limits.
-- For real callbacks against localhost, expose the API with **ngrok** (or deploy) and set `BKASH_CALLBACK_URL=https://YOUR_PUBLIC_HOST/api/v1`.
+**Notes:** Prefer small sandbox amounts. For localhost callbacks, use ngrok (or the live Render URL) and set `BKASH_CALLBACK_URL` to `https://YOUR_PUBLIC_HOST/api/v1`.
 
 ---
 
-## Email & OTP (forgot password)
+## Email & OTP
 
-Flow: `POST /auth/forgot-password` → 6-digit OTP stored in **Redis** (5 min TTL) → email via EJS template → `POST /auth/reset-password` with `{ email, otp, newPassword }`.
+```text
+POST /auth/forgot-password
+  → OTP stored in Redis (5 min)
+  → EJS email sent
+POST /auth/reset-password { email, otp, newPassword }
+```
 
-### Local (Gmail SMTP)
+| Environment | Provider |
+|-------------|----------|
+| Local | Gmail SMTP via Nodemailer |
+| Render | [Resend](https://resend.com) HTTPS API |
 
-Works on your PC with a [Google App Password](https://myaccount.google.com/apppasswords). Same pattern as many Node demos (Nodemailer `service: "gmail"`).
+Render free tier blocks outbound SMTP (`25` / `465` / `587`). Production mail uses Resend on port `443`.
 
-### Render (Resend HTTPS)
+| Variable | Purpose |
+|----------|---------|
+| `RESEND_API_KEY` | Resend API key |
+| `RESEND_FROM` | Sender (e.g. `Housing Platform <onboarding@resend.dev>`) |
+| `RESEND_TEST_TO` | Redirect OTP mail to your Resend account email (required on free tier) |
+| `ALLOW_OTP_IN_RESPONSE` | If send fails, return `otp` in the JSON body for demos |
 
-Render **free** web services block outbound SMTP (`25` / `465` / `587`), so Gmail SMTP times out in production. This API uses **[Resend](https://resend.com)** over HTTPS (`443`) instead.
+With `onboarding@resend.dev`, Resend only delivers to the account owner unless a custom domain is verified. `RESEND_TEST_TO` delivers the **same OTP** stored in Redis and notes the intended account in the email body.
 
-| Env var | Example | Purpose |
-|---------|---------|---------|
-| `RESEND_API_KEY` | `re_...` | Resend API key |
-| `RESEND_FROM` | `Housing Platform <onboarding@resend.dev>` | Sender (use until you verify a domain) |
-| `RESEND_TEST_TO` | `you@gmail.com` | **Required on free Resend** — redirect all OTP emails to your Resend account email |
-| `ALLOW_OTP_IN_RESPONSE` | `true` | If send fails, return `otp` in the JSON body for demo |
+- `emailSent: true` → use the code from email (optional `deliveredTo` field).
+- `emailSent: false` → use `data.otp` from the API response.
 
-**Why `RESEND_TEST_TO`?** With `onboarding@resend.dev`, Resend only delivers to the email on your Resend account. Without a verified custom domain, mail to `tenant@gmail.com` / `*@example.com` is rejected. Setting `RESEND_TEST_TO` to your account inbox delivers the **same OTP** that Redis stores; the email notes which account it is for.
-
-**Successful send** (`emailSent: true`): OTP is **only in email** (not in the API body). Check `deliveredTo` if it differs from the requested address.
-
-**Failed send** (`emailSent: false`): use `data.otp` from the response with `/auth/reset-password`.
-
-Boot log when configured: `Email ready via Resend API (HTTPS) — OTP redirect to …`
-
-Optional fallback: `BREVO_API_KEY` (Brevo HTTPS) if you prefer Brevo over Resend.
+Optional alternative: `BREVO_API_KEY` (Brevo HTTPS).
 
 ---
 
-## Deployment (Render)
+## Deployment
 
-1. Push `main` to GitHub.
-2. **New → Web Service**, connect this repository.
-3. Commands:
+Hosted on **Render** as a Node web service.
 
 | Field | Value |
 |-------|--------|
@@ -490,7 +478,7 @@ Optional fallback: `BREVO_API_KEY` (Brevo HTTPS) if you prefer Brevo over Resend
 | Pre-Deploy | `npx prisma migrate deploy` |
 | Start | `npm start` |
 
-4. Set production env vars: `DATABASE_URL`, `DIRECT_URL`, JWT, Stripe, Redis, Cloudinary, bKash, **and email**:
+**Production email (required for live OTP):**
 
 ```env
 RESEND_API_KEY=re_...
@@ -499,32 +487,21 @@ RESEND_TEST_TO=your-resend-account@gmail.com
 ALLOW_OTP_IN_RESPONSE=true
 ```
 
-Do **not** rely on Gmail `SMTP_*` for live OTP on Render free tier.
+Also set `DATABASE_URL`, `DIRECT_URL`, JWT secrets, Stripe, Redis, Cloudinary, bKash, and:
 
-5. After deploy:
-   - `BACKEND_URL=https://YOUR-SERVICE.onrender.com`
-   - `BKASH_CALLBACK_URL=https://YOUR-SERVICE.onrender.com/api/v1`
-   - Stripe Dashboard webhook → `https://YOUR-SERVICE.onrender.com/api/v1/payments/webhook`
-6. Seed once: `npx prisma db seed` (with production DB URL).
-7. Verify: `GET https://YOUR-SERVICE.onrender.com/health`
+```env
+BACKEND_URL=https://b7a6-assignment-backend.onrender.com
+BKASH_CALLBACK_URL=https://b7a6-assignment-backend.onrender.com/api/v1
+```
 
-Free Render instances may cold-start in ~30–60s after idle.
+Stripe Dashboard webhook endpoint:
 
----
+`https://b7a6-assignment-backend.onrender.com/api/v1/payments/webhook`
 
-## Demo credentials
-
-After seed (from `.env`):
-
-| Field | Default |
-|-------|---------|
-| Email | `admin@housing.com` |
-| Password | `ChangeMeAdmin123!` |
-
-Register additional `LANDLORD` / `TENANT` users via `POST /auth/register` for the full rental + payment demo.
+Seed once against the production database: `npx prisma db seed`.
 
 ---
 
 ## License
 
-ISC · Assignment / educational use.
+ISC · Educational / assignment use.
