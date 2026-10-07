@@ -13,6 +13,7 @@ A modular Express API for landlords to publish properties and rooms, tenants to 
 | **Project** | Housing & Roommate Management Platform |
 | **Repository** | [HasnathAhmedTamim/B7A6-Assignment-backend](https://github.com/HasnathAhmedTamim/B7A6-Assignment-backend) |
 | **Live API** | [https://b7a6-assignment-backend.onrender.com](https://b7a6-assignment-backend.onrender.com) |
+| **Frontend (B7A7)** | [Live site](https://b7a7-assignment-frontend.onrender.com) · [Repository](https://github.com/HasnathAhmedTamim/B7A7-Assignment-frontend) |
 | **API base path** | `/api/v1` |
 | **Health check** | [GET /health](https://b7a6-assignment-backend.onrender.com/health) |
 | **API documentation** | [Postman Documenter](https://documenter.getpostman.com/view/31892953/2sBYAxP9Sg) |
@@ -101,7 +102,7 @@ A modular Express API for landlords to publish properties and rooms, tenants to 
 **Style:** modular monolith — each domain owns `route` → `controller` → `service` → `schema`.
 
 ```text
-Client (Postman)
+Client (NestQuarter Next.js frontend / Postman)
   → Helmet / CORS / Rate limit
   → JSON body (Stripe webhook uses raw body)
   → /api/v1/...
@@ -521,13 +522,19 @@ Optional alternative: `BREVO_API_KEY` (Brevo HTTPS).
 
 ## Deployment
 
-Hosted on **Render** as a Node web service.
+Hosted on **Render** as a Node web service, with PostgreSQL on **Neon** and **Redis Cloud**.
 
 | Field | Value |
 |-------|--------|
-| Build | `npm install --include=dev && npm run build` |
-| Pre-Deploy | `npx prisma migrate deploy` |
+| Build | `npm ci --include=dev && npm run build && npm run prisma:deploy` |
 | Start | `npm start` |
+| Health check path | `/health` |
+
+The free plan has no Pre-Deploy command, so migrations run at the end of the build. Don't set `PORT`; Render provides it.
+
+The server only starts listening after both the database and Redis connect. If the Redis host, port or password is wrong, the deploy hangs until Render times it out, so check those first when a deploy never goes live.
+
+With Neon, use the pooled connection string for `DATABASE_URL` and the direct (non-pooler) one for `DIRECT_URL`, which Prisma migrations need.
 
 **Production email (required for live OTP):**
 
@@ -538,7 +545,17 @@ RESEND_TEST_TO=your-resend-account@gmail.com
 ALLOW_OTP_IN_RESPONSE=false
 ```
 
-Set `CORS_ORIGIN` / `FRONTEND_URL` / `STRIPE_SUCCESS_URL` / `STRIPE_CANCEL_URL` to the deployed frontend.
+Point the frontend-facing variables at the deployed frontend:
+
+```env
+FRONTEND_URL=https://b7a7-assignment-frontend.onrender.com
+CORS_ORIGIN=https://b7a7-assignment-frontend.onrender.com
+STRIPE_SUCCESS_URL=https://b7a7-assignment-frontend.onrender.com/payment/success?session_id={CHECKOUT_SESSION_ID}
+STRIPE_CANCEL_URL=https://b7a7-assignment-frontend.onrender.com/payment/cancel
+STRIPE_CURRENCY=bdt
+```
+
+`CORS_ORIGIN` accepts a comma-separated list (e.g. to also allow `http://localhost:3000`).
 
 Also set `DATABASE_URL`, `DIRECT_URL`, JWT secrets, Stripe, Redis, Cloudinary, bKash, and:
 
