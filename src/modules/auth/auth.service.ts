@@ -2,7 +2,7 @@ import { AuthProvider, Role, UserStatus } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import crypto from "node:crypto";
 import ejs from "ejs";
-import { OAuth2Client } from "google-auth-library";
+import { OAuth2Client, type TokenPayload } from "google-auth-library";
 import httpStatus from "http-status";
 import path from "node:path";
 import type { z } from "zod";
@@ -12,6 +12,7 @@ import { prisma } from "../../lib/prisma.js";
 import { redisClient } from "../../lib/redis.js";
 import { AppError } from "../../utils/AppError.js";
 import { createAuditLog } from "../../utils/audit.js";
+import { isProtectedDemoAccount } from "../../utils/demo.js";
 import {
 	hashToken,
 	signAccessToken,
@@ -49,6 +50,9 @@ const userPublicSelect = {
 } as const;
 
 const FORGOT_PASSWORD_OTP_TTL = 5 * 60;
+const MAX_OTP_ATTEMPTS = 5;
+const otpKeyFor = (email: string) => `forgot-password-otp:${email}`;
+const otpAttemptsKeyFor = (email: string) => `forgot-password-otp-attempts:${email}`;
 
 const parseDurationToMs = (value: string) => {
 	const match = /^(\d+)([smhd])$/.exec(value);
@@ -164,12 +168,17 @@ const googleLogin = async (payload: GoogleLoginInput) => {
 		throw new AppError(httpStatus.SERVICE_UNAVAILABLE, "Google login is not configured");
 	}
 
-	const ticket = await googleClient.verifyIdToken({
-		idToken: payload.idToken,
-		audience: config.google.clientId,
-	});
+	let googlePayload: TokenPayload | undefined;
+	try {
+		const ticket = await googleClient.verifyIdToken({
+			idToken: payload.idToken,
+			audience: config.google.clientId,
+		});
+		googlePayload = ticket.getPayload();
+	} catch {
+		throw new AppError(httpStatus.UNAUTHORIZED, "Invalid Google token");
+	}
 
-	const googlePayload = ticket.getPayload();
 	if (!googlePayload?.email || !googlePayload.sub) {
 		throw new AppError(httpStatus.UNAUTHORIZED, "Invalid Google token");
 	}
@@ -276,18 +285,30 @@ const refresh = async (refreshToken?: string) => {
 	return { user: safeUser, ...tokens };
 };
 
-const logout = async (userId: string, refreshToken?: string) => {
+/**
+ * Works with a valid access token, a refresh token, or both, so a client whose access token
+ * already expired can still revoke its refresh token.
+ */
+const logout = async (userId: string | undefined, refreshToken?: string) => {
+	if (!userId && !refreshToken) {
+		throw new AppError(httpStatus.UNAUTHORIZED, "Authentication required");
+	}
+
+	let actorId = userId;
+
 	if (refreshToken) {
-		const tokenHash = hashToken(refreshToken);
-		await prisma.refreshToken.updateMany({
-			where: {
-				userId,
-				tokenHash,
-				revokedAt: null,
-			},
-			data: { revokedAt: new Date() },
+		const stored = await prisma.refreshToken.findUnique({
+			where: { tokenHash: hashToken(refreshToken) },
 		});
-	} else {
+
+		if (stored && (!userId || stored.userId === userId)) {
+			actorId = stored.userId;
+			await prisma.refreshToken.updateMany({
+				where: { id: stored.id, revokedAt: null },
+				data: { revokedAt: new Date() },
+			});
+		}
+	} else if (userId) {
 		await prisma.refreshToken.updateMany({
 			where: {
 				userId,
@@ -297,12 +318,14 @@ const logout = async (userId: string, refreshToken?: string) => {
 		});
 	}
 
-	await createAuditLog({
-		userId,
-		action: "USER_LOGOUT",
-		entity: "User",
-		entityId: userId,
-	});
+	if (actorId) {
+		await createAuditLog({
+			userId: actorId,
+			action: "USER_LOGOUT",
+			entity: "User",
+			entityId: actorId,
+		});
+	}
 };
 
 const forgotPassword = async (payload: ForgotPasswordInput) => {
@@ -314,6 +337,10 @@ const forgotPassword = async (payload: ForgotPasswordInput) => {
 
 	if (!user) {
 		throw new AppError(httpStatus.NOT_FOUND, "User not found");
+	}
+
+	if (isProtectedDemoAccount(user.email)) {
+		throw new AppError(httpStatus.FORBIDDEN, "Password reset is disabled for demo accounts");
 	}
 
 	if (!user.emailVerified) {
@@ -329,9 +356,10 @@ const forgotPassword = async (payload: ForgotPasswordInput) => {
 	}
 
 	const otp = crypto.randomInt(100000, 1000000).toString();
-	const otpKey = `forgot-password-otp:${email}`;
+	const otpKey = otpKeyFor(email);
 
 	await redisClient.set(otpKey, otp, { EX: FORGOT_PASSWORD_OTP_TTL });
+	await redisClient.del(otpAttemptsKeyFor(email));
 
 	const templatePath = path.join(process.cwd(), "src/templates/forgot-password-otp.ejs");
 	const html = await ejs.renderFile(templatePath, {
@@ -400,10 +428,26 @@ const forgotPassword = async (payload: ForgotPasswordInput) => {
 
 const resetPassword = async (payload: ResetPasswordInput) => {
 	const email = payload.email.trim().toLowerCase();
-	const otpKey = `forgot-password-otp:${email}`;
+	const otpKey = otpKeyFor(email);
+	const attemptsKey = otpAttemptsKeyFor(email);
 	const storedOtp = await redisClient.get(otpKey);
 
-	if (!storedOtp || storedOtp !== payload.otp) {
+	if (!storedOtp) {
+		throw new AppError(httpStatus.BAD_REQUEST, "Invalid or expired OTP");
+	}
+
+	if (storedOtp !== payload.otp) {
+		const attempts = await redisClient.incr(attemptsKey);
+		if (attempts === 1) {
+			await redisClient.expire(attemptsKey, FORGOT_PASSWORD_OTP_TTL);
+		}
+		if (attempts >= MAX_OTP_ATTEMPTS) {
+			await redisClient.del([otpKey, attemptsKey]);
+			throw new AppError(
+				httpStatus.BAD_REQUEST,
+				"Too many invalid OTP attempts. Please request a new OTP",
+			);
+		}
 		throw new AppError(httpStatus.BAD_REQUEST, "Invalid or expired OTP");
 	}
 
@@ -416,10 +460,7 @@ const resetPassword = async (payload: ResetPasswordInput) => {
 	}
 
 	if (!user.password || user.authProvider === AuthProvider.GOOGLE) {
-		throw new AppError(
-			httpStatus.BAD_REQUEST,
-			"Google accounts cannot reset password this way",
-		);
+		throw new AppError(httpStatus.BAD_REQUEST, "Google accounts cannot reset password this way");
 	}
 
 	const hashedPassword = await bcrypt.hash(payload.newPassword, config.bcryptSaltRounds);
@@ -429,7 +470,7 @@ const resetPassword = async (payload: ResetPasswordInput) => {
 		data: { password: hashedPassword },
 	});
 
-	await redisClient.del(otpKey);
+	await redisClient.del([otpKey, attemptsKey]);
 
 	await prisma.refreshToken.updateMany({
 		where: { userId: user.id, revokedAt: null },

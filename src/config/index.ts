@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { z } from "zod";
+import { getDemoAccounts } from "./demoAccounts.js";
 
 const envSchema = z.object({
 	NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
@@ -20,8 +21,25 @@ const envSchema = z.object({
 	STRIPE_WEBHOOK_SECRET: z.string().optional().default(""),
 	STRIPE_SUCCESS_URL: z.string().default("http://localhost:3000/payment/success"),
 	STRIPE_CANCEL_URL: z.string().default("http://localhost:3000/payment/cancel"),
+	// Rents are stored in BDT, so Stripe must charge in BDT unless amounts are converted first.
+	STRIPE_CURRENCY: z
+		.string()
+		.trim()
+		.toLowerCase()
+		.regex(/^[a-z]{3}$/, "STRIPE_CURRENCY must be a 3-letter ISO currency code")
+		.default("bdt"),
 	ADMIN_EMAIL: z.string().email().optional(),
 	ADMIN_PASSWORD: z.string().optional(),
+	DEMO_LANDLORD_EMAIL: z.string().email().optional(),
+	DEMO_LANDLORD_PASSWORD: z.string().optional(),
+	DEMO_TENANT_EMAIL: z.string().email().optional(),
+	DEMO_TENANT_PASSWORD: z.string().optional(),
+	/** Stops admins from blocking/re-roling demo accounts and blocks OTP resets on them */
+	PROTECT_DEMO_ACCOUNTS: z
+		.enum(["true", "false"])
+		.optional()
+		.default("true")
+		.transform((v) => v === "true"),
 	SMTP_USER: z.string().optional().default(""),
 	SMTP_PASSWORD: z.string().optional().default(""),
 	/** e.g. smtp-relay.brevo.com — required for real email on Render (Gmail blocked) */
@@ -57,16 +75,16 @@ const envSchema = z.object({
 	BKASH_PASSWORD: z.string().optional().default(""),
 	BKASH_APP_KEY: z.string().optional().default(""),
 	BKASH_APP_SECRET: z.string().optional().default(""),
-	BKASH_BASE_URL: z
-		.string()
-		.optional()
-		.default("https://tokenized.sandbox.bka.sh/v1.2.0-beta"),
+	BKASH_BASE_URL: z.string().optional().default("https://tokenized.sandbox.bka.sh/v1.2.0-beta"),
 	BKASH_CALLBACK_URL: z.string().optional().default("http://localhost:5000/api/v1"),
-	/** When SMTP fails (common on Render), return OTP in API body for demo/reset */
+	/**
+	 * When email delivery fails, return the OTP in the API body. Anyone who knows an email can then
+	 * reset that account's password, so keep this off outside local development.
+	 */
 	ALLOW_OTP_IN_RESPONSE: z
 		.enum(["true", "false"])
 		.optional()
-		.default("true")
+		.default("false")
 		.transform((v) => v === "true"),
 });
 
@@ -102,10 +120,15 @@ const config = {
 		webhookSecret: env.STRIPE_WEBHOOK_SECRET,
 		successUrl: env.STRIPE_SUCCESS_URL,
 		cancelUrl: env.STRIPE_CANCEL_URL,
+		currency: env.STRIPE_CURRENCY,
 	},
 	admin: {
 		email: env.ADMIN_EMAIL,
 		password: env.ADMIN_PASSWORD,
+	},
+	demo: {
+		protectAccounts: env.PROTECT_DEMO_ACCOUNTS,
+		emails: getDemoAccounts(process.env).map((account) => account.email),
 	},
 	smtp: {
 		user: env.SMTP_USER,

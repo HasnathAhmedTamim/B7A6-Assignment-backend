@@ -44,22 +44,24 @@ A modular Express API for landlords to publish properties and rooms, tenants to 
 ### Authentication & users
 - Email/password registration and login (bcrypt)
 - Google sign-in (ID token verification)
-- JWT access + refresh tokens; logout invalidates refresh tokens
-- Forgot / reset password with Redis OTP (5-minute TTL) and EJS email template
+- JWT access + refresh tokens (rotated on refresh); logout invalidates refresh tokens
+- Forgot / reset password with Redis OTP (5-minute TTL, max 5 wrong attempts) and EJS email template
 - Profile update and Cloudinary profile image upload (Multer)
+- Seeded demo accounts for all three roles (see [Demo accounts](#demo-accounts))
 
 ### Security & quality
 - Three roles: `ADMIN`, `LANDLORD`, `TENANT` with strict RBAC
 - Bearer JWT on protected routes
-- Helmet, CORS, and `express-rate-limit`
+- Helmet, CORS, and `express-rate-limit` (global + stricter limits on login/register/Google and OTP routes)
 - Zod validation on request bodies, params, and queries
 - Soft deletes (`deletedAt`) and audit logs for critical actions
 
 ### Housing domain
-- Property and room CRUD (landlord-owned)
-- Public listings with search, filter, sort, and pagination
+- Property and room CRUD (landlord-owned); partial `PATCH` updates only touch the fields sent
+- Public listings with search, filter, sort, and pagination (only `PUBLISHED` properties are public)
+- `GET /properties/my` — landlord's own properties in every status, paginated
 - Rental requests: create → approve / reject / cancel
-- Approve uses a Prisma interactive transaction (room locked + booking created) to prevent double-booking
+- Approve uses a Prisma interactive transaction with conditional updates (request must still be `PENDING`, room must still be available) to prevent double-booking under concurrency
 
 ### Payments
 - **Stripe** Checkout Session + signed webhook
@@ -127,8 +129,8 @@ POST /payments/initiate { bookingId, gateway }
 ## Business workflow
 
 ```text
-1. ADMIN is seeded; manages users and audits
-2. LANDLORD registers → creates Property → adds Room(s)
+1. ADMIN / demo LANDLORD / demo TENANT are seeded; ADMIN manages users and audits
+2. LANDLORD registers → creates Property (DRAFT) → adds Room(s) → PATCH status PUBLISHED
 3. TENANT browses GET /properties (?search&city&minRent&page…)
 4. TENANT submits POST /rental-requests
 5. LANDLORD PATCH .../approve
@@ -142,9 +144,18 @@ POST /payments/initiate { bookingId, gateway }
 | Entity | Typical status path |
 |--------|---------------------|
 | Rental request | `PENDING` → `APPROVED` / `REJECTED` / `CANCELLED` |
-| Room | `available: true` → `false` on approve |
+| Room | `available: true` → `false` on approve → `true` again when the booking is cancelled |
 | Booking | `PENDING_PAYMENT` → `CONFIRMED` or `CANCELLED` |
-| Payment | `PENDING` → `PAID` / `FAILED` / `CANCELLED` |
+| Payment | `PENDING` → `PAID` / `FAILED` / `CANCELLED` (a `FAILED` Stripe payment can still become `PAID` if the customer retries in the same checkout) |
+
+**State rules enforced by the API (`409 Conflict`):**
+
+- Rental requests can only be created for `PUBLISHED` properties.
+- Approve / reject / cancel only succeed while the request is still `PENDING`.
+- A room with an active booking (`PENDING_PAYMENT` / `CONFIRMED`) cannot be marked `available: true`, and neither the room nor its property can be deleted until that booking is cancelled.
+- Deleting a room or property automatically rejects its `PENDING` rental requests.
+- Starting a new payment closes (expires) any earlier open checkout for the same booking, so a booking can't be paid twice.
+- A payment that arrives after its booking was cancelled is recorded as `PAID` but does **not** revive the booking; it is flagged with a `PAYMENT_REQUIRES_REFUND` audit log for manual refund.
 
 ---
 
@@ -182,11 +193,14 @@ POST /payments/initiate { bookingId, gateway }
 
 | HTTP | Case |
 |------|------|
-| `400` | Validation (Zod) |
+| `400` | Validation (Zod), malformed JSON, non-image upload |
 | `401` | Missing or invalid token |
-| `403` | Wrong role or ownership |
-| `404` | Missing or soft-deleted resource |
-| `409` | Invalid state (e.g. already approved) |
+| `403` | Wrong role or ownership, blocked account, protected demo account |
+| `404` | Missing, soft-deleted, or not-visible (e.g. another landlord's draft) resource |
+| `409` | Invalid state (e.g. already approved, room booked, duplicate unique value) |
+| `413` | Uploaded file larger than 5 MB |
+| `429` | Rate limit exceeded |
+| `502` | Payment provider error |
 | `500` | Unexpected server error |
 
 ```http
@@ -212,7 +226,7 @@ Helpers: `GET /health`, `GET /`, `GET /google-signin` (dev Google ID token helpe
 | `POST` | `/auth/login` | Public | Email/password login |
 | `POST` | `/auth/google` | Public | Google ID token login |
 | `POST` | `/auth/refresh-token` | Public | Rotate access token |
-| `POST` | `/auth/logout` | Auth | Invalidate refresh token |
+| `POST` | `/auth/logout` | Access token and/or `refreshToken` | With `refreshToken`: revoke that session. With only an access token: revoke all sessions |
 | `POST` | `/auth/forgot-password` | Public | Send OTP email |
 | `POST` | `/auth/reset-password` | Public | Reset with OTP + new password |
 
@@ -228,18 +242,23 @@ Helpers: `GET /health`, `GET /`, `GET /google-signin` (dev Google ID token helpe
 
 | Method | Path | Access | Description |
 |--------|------|--------|-------------|
-| `GET` | `/properties` | Public | List + search / filter / sort / pagination |
-| `GET` | `/properties/:id` | Public | Property detail |
+| `GET` | `/properties` | Public | List + search / filter / sort / pagination (`PUBLISHED` only; `?status=DRAFT` / `ARCHIVED` is admin-only) |
+| `GET` | `/properties/my` | Landlord / Admin | Caller's own properties (all statuses), paginated |
+| `GET` | `/properties/:id` | Public | Property detail (drafts/archived: owner or admin only, otherwise `404`) |
 | `POST` | `/properties` | Landlord / Admin | Create |
 | `PATCH` | `/properties/:id` | Owner / Admin | Update |
 | `DELETE` | `/properties/:id` | Owner / Admin | Soft delete |
 | `POST` | `/properties/:propertyId/rooms` | Owner / Admin | Add room |
-| `GET` | `/properties/:propertyId/rooms` | Public | List rooms |
+| `GET` | `/properties/:propertyId/rooms` | Public | List rooms (same visibility as the property) |
 | `PATCH` | `/rooms/:id` | Owner / Admin | Update room |
 | `DELETE` | `/rooms/:id` | Owner / Admin | Soft delete room |
 
 Query example:  
 `?page=1&limit=10&search=gulshan&city=Dhaka&minRent=5000&maxRent=20000&propertyType=APARTMENT&available=true&sortBy=monthlyRent&sortOrder=asc`
+
+`GET /properties/my` query: `page`, `limit` (max 100), `search`, `status` (`DRAFT` / `PUBLISHED` / `ARCHIVED`), `sortBy` (`createdAt` / `monthlyRent` / `title` / `city`), `sortOrder`.
+
+`PATCH /properties/:id` and `PATCH /rooms/:id` are true partial updates: omitted fields keep their current values (an empty body returns `400`).
 
 ### Rental requests
 
@@ -279,11 +298,13 @@ Query example:
 
 `gateway`: `"STRIPE"` (default) or `"BKASH"`. Response includes `checkoutUrl`.
 
+`GET /payments/my` and `GET /payments/:id` include a `booking` summary (dates, status, property, room). Booking responses include a `tenant` summary.
+
 ### Admin
 
 | Method | Path | Access | Description |
 |--------|------|--------|-------------|
-| `GET` | `/admin/users` | Admin | List users |
+| `GET` | `/admin/users` | Admin | List users. Optional `search` (name/email/phone), `role`, `status`, `page`, `limit` (max 100). Without `limit` the full list is returned; `meta` is always included |
 | `PATCH` | `/admin/users/:id/status` | Admin | Block / activate |
 | `PATCH` | `/admin/users/:id/role` | Admin | Change role |
 | `GET` | `/admin/dashboard-stats` | Admin | Platform counters |
@@ -298,7 +319,7 @@ backend/
 ├── prisma/
 │   ├── schema.prisma              # Models, enums, indexes, soft deletes
 │   ├── migrations/                # SQL migrations
-│   └── seed.ts                    # Demo ADMIN
+│   └── seed.ts                    # Demo ADMIN / LANDLORD / TENANT
 ├── postman/
 │   └── housing-platform.json      # Full API collection
 ├── public/
@@ -385,6 +406,18 @@ npx prisma migrate dev
 npm run db:seed
 ```
 
+### Demo accounts
+
+`npm run db:seed` (same as `npx prisma db seed`) creates or resets one account per role. It is idempotent: re-running restores the name, password, role and `ACTIVE` status. The defaults below are public demo credentials for development/evaluation; override them with the env variables listed.
+
+| Role | Email | Password | Override env |
+|------|-------|----------|--------------|
+| `ADMIN` | `admin@housing.com` | `ChangeMeAdmin123!` | `ADMIN_EMAIL` / `ADMIN_PASSWORD` |
+| `LANDLORD` | `landlord@housing.com` | `Landlord123!` | `DEMO_LANDLORD_EMAIL` / `DEMO_LANDLORD_PASSWORD` |
+| `TENANT` | `tenant@housing.com` | `Tenant123!` | `DEMO_TENANT_EMAIL` / `DEMO_TENANT_PASSWORD` |
+
+With `PROTECT_DEMO_ACCOUNTS=true` (default), these accounts cannot be blocked, re-roled, or password-reset through the API (`403`), so one-click demo login keeps working.
+
 ### 4. Run
 
 ```bash
@@ -399,7 +432,7 @@ npm run dev
 | `npm run dev` | Development server (tsx watch) |
 | `npm run build` | `prisma generate` + `tsc` |
 | `npm start` | Run `dist/server.js` |
-| `npm run db:seed` | Seed demo admin |
+| `npm run db:seed` | Create / reset demo accounts |
 | `npm run lint` | Biome lint |
 | `npx prisma studio` | Database GUI |
 
@@ -417,6 +450,10 @@ npm run dev
 
 1. `POST /payments/initiate` with `"gateway": "STRIPE"`.
 2. Open `checkoutUrl`; pay with test card `4242 4242 4242 4242`.
+
+Rents are stored in BDT, so Stripe charges in `STRIPE_CURRENCY` (default `bdt`) and the payment row records that currency. Stripe rejects totals below roughly USD 0.50 (about ৳60); the API returns `400` with Stripe's message in that case.
+
+To let the frontend identify the returning checkout, `STRIPE_SUCCESS_URL` may include Stripe's placeholder, e.g. `https://your-frontend/payment/success?session_id={CHECKOUT_SESSION_ID}`. The session id equals the payment's `gatewayPaymentId`.
 3. Local webhooks:
 
 ```bash
@@ -424,6 +461,18 @@ stripe listen --forward-to localhost:5000/api/v1/payments/webhook
 ```
 
 4. Signed webhook → payment `PAID`, booking `CONFIRMED`.
+
+Enable these webhook events on the Stripe endpoint:
+
+| Event | Effect |
+|-------|--------|
+| `checkout.session.completed` | `PAID` + booking `CONFIRMED` (only when `payment_status` is `paid`) |
+| `checkout.session.async_payment_succeeded` | `PAID` + booking `CONFIRMED` |
+| `checkout.session.async_payment_failed` | `FAILED` |
+| `checkout.session.expired` | `CANCELLED` |
+| `payment_intent.payment_failed` | `FAILED` (matched via PaymentIntent metadata / checkout session) |
+
+`STRIPE_SUCCESS_URL` receives no payment id; the success page should re-fetch `GET /payments/my` or `GET /bookings/:id` until the webhook has confirmed the booking.
 
 ### bKash (sandbox)
 
@@ -457,12 +506,14 @@ Render free tier blocks outbound SMTP (`25` / `465` / `587`). Production mail us
 | `RESEND_API_KEY` | Resend API key |
 | `RESEND_FROM` | Sender (e.g. `Housing Platform <onboarding@resend.dev>`) |
 | `RESEND_TEST_TO` | Redirect OTP mail to your Resend account email (required on free tier) |
-| `ALLOW_OTP_IN_RESPONSE` | If send fails, return `otp` in the JSON body for demos |
+| `ALLOW_OTP_IN_RESPONSE` | Default `false`. If `true` and sending fails, `otp` is returned in the JSON body. Local debugging only: in production it lets anyone reset any account's password |
 
 With `onboarding@resend.dev`, Resend only delivers to the account owner unless a custom domain is verified. `RESEND_TEST_TO` delivers the **same OTP** stored in Redis and notes the intended account in the email body.
 
 - `emailSent: true` → use the code from email (optional `deliveredTo` field).
-- `emailSent: false` → use `data.otp` from the API response.
+- `emailSent: false` → only when `ALLOW_OTP_IN_RESPONSE=true`: use `data.otp` from the API response.
+
+After 5 wrong OTPs the code is invalidated and a new one must be requested.
 
 Optional alternative: `BREVO_API_KEY` (Brevo HTTPS).
 
@@ -484,8 +535,10 @@ Hosted on **Render** as a Node web service.
 RESEND_API_KEY=re_...
 RESEND_FROM=Housing Platform <onboarding@resend.dev>
 RESEND_TEST_TO=your-resend-account@gmail.com
-ALLOW_OTP_IN_RESPONSE=true
+ALLOW_OTP_IN_RESPONSE=false
 ```
+
+Set `CORS_ORIGIN` / `FRONTEND_URL` / `STRIPE_SUCCESS_URL` / `STRIPE_CANCEL_URL` to the deployed frontend.
 
 Also set `DATABASE_URL`, `DIRECT_URL`, JWT secrets, Stripe, Redis, Cloudinary, bKash, and:
 
@@ -498,7 +551,7 @@ Stripe Dashboard webhook endpoint:
 
 `https://b7a6-assignment-backend.onrender.com/api/v1/payments/webhook`
 
-Seed once against the production database: `npx prisma db seed`.
+Seed against the production database to create/reset the demo accounts: `npx prisma db seed`.
 
 ---
 

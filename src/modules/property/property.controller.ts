@@ -16,7 +16,7 @@ const createProperty = catchAsync(async (req: Request, res: Response) => {
 });
 
 const getProperties = catchAsync(async (req: Request, res: Response) => {
-	const result = await PropertyService.getProperties(req.query as never);
+	const result = await PropertyService.getProperties(req.query as never, req.user);
 	sendResponse({
 		res,
 		statusCode: httpStatus.OK,
@@ -26,8 +26,19 @@ const getProperties = catchAsync(async (req: Request, res: Response) => {
 	});
 });
 
+const getMyProperties = catchAsync(async (req: Request, res: Response) => {
+	const result = await PropertyService.getMyProperties(req.user!, req.query as never);
+	sendResponse({
+		res,
+		statusCode: httpStatus.OK,
+		message: "Your properties fetched successfully",
+		meta: result.meta,
+		data: result.data,
+	});
+});
+
 const getPropertyById = catchAsync(async (req: Request, res: Response) => {
-	const property = await PropertyService.getPropertyById(req.params.id as string);
+	const property = await PropertyService.getPropertyById(req.params.id as string, req.user);
 	sendResponse({
 		res,
 		statusCode: httpStatus.OK,
@@ -71,7 +82,7 @@ const createRoom = catchAsync(async (req: Request, res: Response) => {
 });
 
 const getRooms = catchAsync(async (req: Request, res: Response) => {
-	const rooms = await RoomService.getRoomsByProperty(req.params.propertyId as string);
+	const rooms = await RoomService.getRoomsByProperty(req.params.propertyId as string, req.user);
 	sendResponse({
 		res,
 		statusCode: httpStatus.OK,
@@ -103,6 +114,7 @@ const deleteRoom = catchAsync(async (req: Request, res: Response) => {
 export const PropertyController = {
 	createProperty,
 	getProperties,
+	getMyProperties,
 	getPropertyById,
 	updateProperty,
 	deleteProperty,

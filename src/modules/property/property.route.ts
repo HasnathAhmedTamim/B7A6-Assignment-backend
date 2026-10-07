@@ -1,11 +1,12 @@
 import { Role } from "@prisma/client";
 import { Router } from "express";
-import { authenticate } from "../../middlewares/auth.middleware.js";
+import { authenticate, optionalAuthenticate } from "../../middlewares/auth.middleware.js";
 import { authorize } from "../../middlewares/rbac.middleware.js";
 import { validateRequest } from "../../middlewares/validation.middleware.js";
 import { PropertyController } from "./property.controller.js";
 import {
 	createPropertySchema,
+	myPropertyQuerySchema,
 	propertyIdParamsSchema,
 	propertyQuerySchema,
 	updatePropertySchema,
@@ -19,9 +20,25 @@ import {
 
 const router = Router();
 
-router.get("/", validateRequest(propertyQuerySchema, "query"), PropertyController.getProperties);
+router.get(
+	"/",
+	optionalAuthenticate,
+	validateRequest(propertyQuerySchema, "query"),
+	PropertyController.getProperties,
+);
+
+// Must be registered before "/:id"
+router.get(
+	"/my",
+	authenticate,
+	authorize(Role.LANDLORD, Role.ADMIN),
+	validateRequest(myPropertyQuerySchema, "query"),
+	PropertyController.getMyProperties,
+);
+
 router.get(
 	"/:id",
+	optionalAuthenticate,
 	validateRequest(propertyIdParamsSchema, "params"),
 	PropertyController.getPropertyById,
 );
@@ -62,6 +79,7 @@ router.post(
 
 router.get(
 	"/:propertyId/rooms",
+	optionalAuthenticate,
 	validateRequest(propertyIdParamSchema, "params"),
 	PropertyController.getRooms,
 );

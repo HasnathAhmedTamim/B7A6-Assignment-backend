@@ -1,5 +1,5 @@
 import type { Prisma } from "@prisma/client";
-import { PropertyStatus, Role } from "@prisma/client";
+import { BookingStatus, PropertyStatus, RentalRequestStatus, Role } from "@prisma/client";
 import httpStatus from "http-status";
 import type { z } from "zod";
 import { prisma } from "../../lib/prisma.js";
@@ -8,6 +8,7 @@ import { AppError } from "../../utils/AppError.js";
 import { createAuditLog } from "../../utils/audit.js";
 import type {
 	createPropertySchema,
+	myPropertyQuerySchema,
 	propertyQuerySchema,
 	updatePropertySchema,
 } from "./property.schema.js";
@@ -15,6 +16,9 @@ import type {
 type CreatePropertyInput = z.infer<typeof createPropertySchema>;
 type UpdatePropertyInput = z.infer<typeof updatePropertySchema>;
 type PropertyQuery = z.infer<typeof propertyQuerySchema>;
+type MyPropertyQuery = z.infer<typeof myPropertyQuerySchema>;
+
+export const ACTIVE_BOOKING_STATUSES = [BookingStatus.PENDING_PAYMENT, BookingStatus.CONFIRMED];
 
 const propertySelect = {
 	id: true,
@@ -48,6 +52,54 @@ const propertySelect = {
 	},
 } as const;
 
+const searchFilter = (search?: string): Prisma.PropertyWhereInput =>
+	search
+		? {
+				OR: [
+					{ title: { contains: search, mode: "insensitive" } },
+					{ description: { contains: search, mode: "insensitive" } },
+					{ city: { contains: search, mode: "insensitive" } },
+					{ address: { contains: search, mode: "insensitive" } },
+				],
+			}
+		: {};
+
+const paginate = async (
+	where: Prisma.PropertyWhereInput,
+	{
+		page,
+		limit,
+		sortBy,
+		sortOrder,
+	}: Pick<PropertyQuery, "page" | "limit" | "sortBy" | "sortOrder">,
+) => {
+	const [total, data] = await prisma.$transaction([
+		prisma.property.count({ where }),
+		prisma.property.findMany({
+			where,
+			select: propertySelect,
+			skip: (page - 1) * limit,
+			take: limit,
+			orderBy: { [sortBy]: sortOrder },
+		}),
+	]);
+
+	return {
+		meta: {
+			page,
+			limit,
+			total,
+			totalPages: Math.ceil(total / limit),
+		},
+		data,
+	};
+};
+
+const canViewProperty = (property: { ownerId: string; status: PropertyStatus }, user?: AuthUser) =>
+	property.status === PropertyStatus.PUBLISHED ||
+	user?.role === Role.ADMIN ||
+	user?.id === property.ownerId;
+
 const createProperty = async (user: AuthUser, payload: CreatePropertyInput) => {
 	if (user.role !== Role.LANDLORD && user.role !== Role.ADMIN) {
 		throw new AppError(httpStatus.FORBIDDEN, "Only landlords can create properties");
@@ -71,10 +123,8 @@ const createProperty = async (user: AuthUser, payload: CreatePropertyInput) => {
 	return property;
 };
 
-const getProperties = async (query: PropertyQuery) => {
+const getProperties = async (query: PropertyQuery, user?: AuthUser) => {
 	const {
-		page,
-		limit,
 		search,
 		city,
 		location,
@@ -85,9 +135,14 @@ const getProperties = async (query: PropertyQuery) => {
 		bathrooms,
 		available,
 		status,
-		sortBy,
-		sortOrder,
 	} = query;
+
+	if (status && status !== PropertyStatus.PUBLISHED && user?.role !== Role.ADMIN) {
+		throw new AppError(
+			httpStatus.FORBIDDEN,
+			"Only admins can list unpublished properties. Landlords should use GET /properties/my",
+		);
+	}
 
 	const where: Prisma.PropertyWhereInput = {
 		deletedAt: null,
@@ -105,16 +160,7 @@ const getProperties = async (query: PropertyQuery) => {
 					},
 				}
 			: {}),
-		...(search
-			? {
-					OR: [
-						{ title: { contains: search, mode: "insensitive" } },
-						{ description: { contains: search, mode: "insensitive" } },
-						{ city: { contains: search, mode: "insensitive" } },
-						{ address: { contains: search, mode: "insensitive" } },
-					],
-				}
-			: {}),
+		...searchFilter(search),
 		...(available === true
 			? {
 					rooms: {
@@ -127,29 +173,21 @@ const getProperties = async (query: PropertyQuery) => {
 			: {}),
 	};
 
-	const [total, data] = await prisma.$transaction([
-		prisma.property.count({ where }),
-		prisma.property.findMany({
-			where,
-			select: propertySelect,
-			skip: (page - 1) * limit,
-			take: limit,
-			orderBy: { [sortBy]: sortOrder },
-		}),
-	]);
-
-	return {
-		meta: {
-			page,
-			limit,
-			total,
-			totalPages: Math.ceil(total / limit),
-		},
-		data,
-	};
+	return paginate(where, query);
 };
 
-const getPropertyById = async (id: string) => {
+const getMyProperties = async (user: AuthUser, query: MyPropertyQuery) => {
+	const where: Prisma.PropertyWhereInput = {
+		ownerId: user.id,
+		deletedAt: null,
+		...(query.status ? { status: query.status } : {}),
+		...searchFilter(query.search),
+	};
+
+	return paginate(where, query);
+};
+
+const getPropertyById = async (id: string, user?: AuthUser) => {
 	const property = await prisma.property.findFirst({
 		where: { id, deletedAt: null },
 		select: {
@@ -164,11 +202,26 @@ const getPropertyById = async (id: string) => {
 					capacity: true,
 					available: true,
 				},
+				orderBy: { createdAt: "asc" },
 			},
 		},
 	});
 
-	if (!property) {
+	if (!property || !canViewProperty(property, user)) {
+		throw new AppError(httpStatus.NOT_FOUND, "Property not found");
+	}
+
+	return property;
+};
+
+/** Throws 404 unless the property exists and is visible to the (optional) viewer. */
+const assertPropertyVisible = async (propertyId: string, user?: AuthUser) => {
+	const property = await prisma.property.findFirst({
+		where: { id: propertyId, deletedAt: null },
+		select: { id: true, ownerId: true, status: true },
+	});
+
+	if (!property || !canViewProperty(property, user)) {
 		throw new AppError(httpStatus.NOT_FOUND, "Property not found");
 	}
 
@@ -213,10 +266,37 @@ const updateProperty = async (id: string, user: AuthUser, payload: UpdatePropert
 const deleteProperty = async (id: string, user: AuthUser) => {
 	await assertPropertyOwner(id, user);
 
-	const property = await prisma.property.update({
-		where: { id },
-		data: { deletedAt: new Date(), status: PropertyStatus.ARCHIVED },
-		select: propertySelect,
+	const activeBooking = await prisma.booking.findFirst({
+		where: { propertyId: id, deletedAt: null, status: { in: ACTIVE_BOOKING_STATUSES } },
+		select: { id: true },
+	});
+
+	if (activeBooking) {
+		throw new AppError(
+			httpStatus.CONFLICT,
+			"Property has active bookings. Cancel them before deleting the property",
+		);
+	}
+
+	const now = new Date();
+	const { property, rejectedRequests } = await prisma.$transaction(async (tx) => {
+		const rejected = await tx.rentalRequest.updateMany({
+			where: { propertyId: id, status: RentalRequestStatus.PENDING },
+			data: { status: RentalRequestStatus.REJECTED },
+		});
+
+		await tx.room.updateMany({
+			where: { propertyId: id, deletedAt: null },
+			data: { deletedAt: now, available: false },
+		});
+
+		const archived = await tx.property.update({
+			where: { id },
+			data: { deletedAt: now, status: PropertyStatus.ARCHIVED },
+			select: propertySelect,
+		});
+
+		return { property: archived, rejectedRequests: rejected.count };
 	});
 
 	await createAuditLog({
@@ -224,6 +304,7 @@ const deleteProperty = async (id: string, user: AuthUser) => {
 		action: "PROPERTY_DELETED",
 		entity: "Property",
 		entityId: id,
+		metadata: { rejectedRequests },
 	});
 
 	return property;
@@ -232,8 +313,10 @@ const deleteProperty = async (id: string, user: AuthUser) => {
 export const PropertyService = {
 	createProperty,
 	getProperties,
+	getMyProperties,
 	getPropertyById,
 	updateProperty,
 	deleteProperty,
 	assertPropertyOwner,
+	assertPropertyVisible,
 };

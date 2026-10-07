@@ -51,7 +51,7 @@ const googleLogin = catchAsync(async (req: Request, res: Response) => {
 });
 
 const refreshToken = catchAsync(async (req: Request, res: Response) => {
-	const token = req.body.refreshToken || req.cookies?.refreshToken;
+	const token = req.body?.refreshToken || req.cookies?.refreshToken;
 	const result = await AuthService.refresh(token);
 	setAuthCookies(res, result.accessToken, result.refreshToken);
 	sendResponse({
@@ -63,8 +63,8 @@ const refreshToken = catchAsync(async (req: Request, res: Response) => {
 });
 
 const logout = catchAsync(async (req: Request, res: Response) => {
-	const token = req.body.refreshToken || req.cookies?.refreshToken;
-	await AuthService.logout(req.user!.id, token);
+	const token = req.body?.refreshToken || req.cookies?.refreshToken;
+	await AuthService.logout(req.user?.id, token);
 	res.clearCookie("accessToken");
 	res.clearCookie("refreshToken");
 	sendResponse({

@@ -1,26 +1,38 @@
 import { PropertyStatus, PropertyType } from "@prisma/client";
 import { z } from "zod";
 
-export const createPropertySchema = z.object({
+// Zod 4 applies `.default()` values even inside `.partial()`, so the update schema
+// must be built from fields that carry no defaults.
+const propertyFields = {
 	title: z.string().trim().min(3).max(200),
 	description: z.string().trim().min(10).max(5000),
 	address: z.string().trim().min(3).max(300),
 	city: z.string().trim().min(2).max(100),
-	location: z.string().trim().max(200).optional(),
+	location: z.string().trim().max(200),
 	monthlyRent: z.coerce.number().positive(),
 	propertyType: z.nativeEnum(PropertyType),
 	bedrooms: z.coerce.number().int().min(0).max(50),
 	bathrooms: z.coerce.number().int().min(0).max(50),
-	status: z.nativeEnum(PropertyStatus).optional().default(PropertyStatus.DRAFT),
+	status: z.nativeEnum(PropertyStatus),
+};
+
+export const createPropertySchema = z.object({
+	...propertyFields,
+	location: propertyFields.location.optional(),
+	status: propertyFields.status.optional().default(PropertyStatus.DRAFT),
 });
 
-export const updatePropertySchema = createPropertySchema
+export const updatePropertySchema = z
+	.object(propertyFields)
 	.partial()
 	.refine((data) => Object.keys(data).length > 0, { message: "At least one field is required" });
 
 export const propertyIdParamsSchema = z.object({
 	id: z.string().uuid(),
 });
+
+const sortFields = z.enum(["monthlyRent", "createdAt", "title", "city"]).default("createdAt");
+const sortOrder = z.enum(["asc", "desc"]).default("desc");
 
 export const propertyQuerySchema = z.object({
 	page: z.coerce.number().int().min(1).default(1),
@@ -38,6 +50,15 @@ export const propertyQuerySchema = z.object({
 		.optional()
 		.transform((v) => (v === undefined ? undefined : v === "true")),
 	status: z.nativeEnum(PropertyStatus).optional(),
-	sortBy: z.enum(["monthlyRent", "createdAt", "title", "city"]).default("createdAt"),
-	sortOrder: z.enum(["asc", "desc"]).default("desc"),
+	sortBy: sortFields,
+	sortOrder,
+});
+
+export const myPropertyQuerySchema = z.object({
+	page: z.coerce.number().int().min(1).default(1),
+	limit: z.coerce.number().int().min(1).max(100).default(10),
+	search: z.string().trim().optional(),
+	status: z.nativeEnum(PropertyStatus).optional(),
+	sortBy: sortFields,
+	sortOrder,
 });

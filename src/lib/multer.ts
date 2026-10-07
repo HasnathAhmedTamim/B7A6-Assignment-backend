@@ -1,4 +1,6 @@
+import httpStatus from "http-status";
 import multer from "multer";
+import { AppError } from "../utils/AppError.js";
 
 const storage = multer.memoryStorage();
 
@@ -9,7 +11,7 @@ export const upload = multer({
 	},
 	fileFilter: (_req, file, cb) => {
 		if (!file.mimetype.startsWith("image/")) {
-			cb(new Error("Only image files are allowed"));
+			cb(new AppError(httpStatus.BAD_REQUEST, "Only image files are allowed"));
 			return;
 		}
 		cb(null, true);

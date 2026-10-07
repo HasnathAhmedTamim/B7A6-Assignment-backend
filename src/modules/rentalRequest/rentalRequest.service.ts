@@ -1,4 +1,4 @@
-import { BookingStatus, RentalRequestStatus, Role } from "@prisma/client";
+import { BookingStatus, PropertyStatus, RentalRequestStatus, Role } from "@prisma/client";
 import httpStatus from "http-status";
 import type { z } from "zod";
 import { prisma } from "../../lib/prisma.js";
@@ -77,6 +77,10 @@ const createRequest = async (user: AuthUser, payload: CreateRentalRequestInput) 
 
 	if (!room) {
 		throw new AppError(httpStatus.NOT_FOUND, "Room not found for this property");
+	}
+
+	if (room.property.status !== PropertyStatus.PUBLISHED) {
+		throw new AppError(httpStatus.CONFLICT, "This property is not accepting rental requests");
 	}
 
 	if (!room.available) {
@@ -183,27 +187,27 @@ const approveRequest = async (requestId: string, user: AuthUser) => {
 
 	return prisma.$transaction(
 		async (tx) => {
-			const locked = await tx.rentalRequest.findUnique({
-				where: { id: requestId },
-				include: { room: true },
-			});
-
-			if (!locked || locked.status !== RentalRequestStatus.PENDING) {
-				throw new AppError(httpStatus.CONFLICT, "Rental request is no longer pending");
-			}
-
-			if (!locked.room.available) {
-				throw new AppError(httpStatus.CONFLICT, "Room is no longer available");
-			}
-
-			const updatedRequest = await tx.rentalRequest.update({
-				where: { id: requestId },
+			// Conditional updates take row locks, so concurrent approvals cannot both succeed.
+			const claimed = await tx.rentalRequest.updateMany({
+				where: { id: requestId, status: RentalRequestStatus.PENDING },
 				data: { status: RentalRequestStatus.APPROVED },
 			});
 
-			await tx.room.update({
-				where: { id: request.roomId },
+			if (claimed.count !== 1) {
+				throw new AppError(httpStatus.CONFLICT, "Rental request is no longer pending");
+			}
+
+			const reserved = await tx.room.updateMany({
+				where: { id: request.roomId, available: true, deletedAt: null },
 				data: { available: false },
+			});
+
+			if (reserved.count !== 1) {
+				throw new AppError(httpStatus.CONFLICT, "Room is no longer available");
+			}
+
+			const updatedRequest = await tx.rentalRequest.findUniqueOrThrow({
+				where: { id: requestId },
 			});
 
 			const booking = await tx.booking.create({
@@ -247,6 +251,26 @@ const approveRequest = async (requestId: string, user: AuthUser) => {
 	);
 };
 
+/** Moves a request out of PENDING only if it is still PENDING (guards against a concurrent approve). */
+const closePendingRequest = async (
+	requestId: string,
+	status: typeof RentalRequestStatus.REJECTED | typeof RentalRequestStatus.CANCELLED,
+) => {
+	const result = await prisma.rentalRequest.updateMany({
+		where: { id: requestId, status: RentalRequestStatus.PENDING },
+		data: { status },
+	});
+
+	if (result.count !== 1) {
+		throw new AppError(httpStatus.CONFLICT, "Rental request is no longer pending");
+	}
+
+	return prisma.rentalRequest.findUniqueOrThrow({
+		where: { id: requestId },
+		select: requestSelect,
+	});
+};
+
 const rejectRequest = async (requestId: string, user: AuthUser) => {
 	const request = await prisma.rentalRequest.findUnique({
 		where: { id: requestId },
@@ -268,11 +292,7 @@ const rejectRequest = async (requestId: string, user: AuthUser) => {
 		);
 	}
 
-	const updated = await prisma.rentalRequest.update({
-		where: { id: requestId },
-		data: { status: RentalRequestStatus.REJECTED },
-		select: requestSelect,
-	});
+	const updated = await closePendingRequest(requestId, RentalRequestStatus.REJECTED);
 
 	await createAuditLog({
 		userId: user.id,
@@ -304,11 +324,7 @@ const cancelRequest = async (requestId: string, user: AuthUser) => {
 		);
 	}
 
-	const updated = await prisma.rentalRequest.update({
-		where: { id: requestId },
-		data: { status: RentalRequestStatus.CANCELLED },
-		select: requestSelect,
-	});
+	const updated = await closePendingRequest(requestId, RentalRequestStatus.CANCELLED);
 
 	await createAuditLog({
 		userId: user.id,

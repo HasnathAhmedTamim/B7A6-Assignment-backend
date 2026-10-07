@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Housing & Roommate Platform API",
-    "description": "B7A6 full workflow collection.\n\n## Suggested test order\n1. Auth → Register Landlord + Tenant (or Login Admin)\n2. Copy accessToken into landlordToken / tenantToken / adminToken\n3. Landlord → Create Property (PUBLISHED) → Create Room\n4. Tenant → Create Rental Request\n5. Landlord → Approve Request (creates Booking)\n6. Tenant → Initiate Payment (STRIPE or BKASH)\n7. Admin → Dashboard / Users / Audit logs\n\nGoogle login: get idToken from http://localhost:5000/google-signin\nForgot password: credential users only (not Google-only).",
+    "description": "B7A6 full workflow collection.\n\n## Demo accounts (created by `npx prisma db seed`)\n- ADMIN: admin@housing.com / ChangeMeAdmin123!\n- LANDLORD: landlord@housing.com / Landlord123!\n- TENANT: tenant@housing.com / Tenant123!\n\n## Suggested test order\n1. Auth → Login Admin / Landlord / Tenant (demo accounts) or Register your own\n2. Copy accessToken into landlordToken / tenantToken / adminToken\n3. Landlord → Create Property (PUBLISHED) → Create Room\n4. Tenant → Create Rental Request\n5. Landlord → Approve Request (creates Booking)\n6. Tenant → Initiate Payment (STRIPE or BKASH)\n7. Admin → Dashboard / Users / Audit logs\n\nGoogle login: get idToken from http://localhost:5000/google-signin\nForgot password: credential users only (not Google-only).",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -152,7 +152,7 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"landlord@example.com\",\n  \"password\": \"Password123!\"\n}"
+              "raw": "{\n  \"email\": \"landlord@housing.com\",\n  \"password\": \"Landlord123!\"\n}"
             },
             "url": "{{baseUrl}}/auth/login"
           }
@@ -180,7 +180,7 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"tenant@example.com\",\n  \"password\": \"Password123!\"\n}"
+              "raw": "{\n  \"email\": \"tenant@housing.com\",\n  \"password\": \"Tenant123!\"\n}"
             },
             "url": "{{baseUrl}}/auth/login"
           }
@@ -341,6 +341,17 @@
           }
         },
         {
+          "name": "My Properties (Landlord, all statuses)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{landlordToken}}" }
+            ],
+            "url": "{{baseUrl}}/properties/my?page=1&limit=10&sortBy=createdAt&sortOrder=desc",
+            "description": "Optional query: status=DRAFT|PUBLISHED|ARCHIVED, search."
+          }
+        },
+        {
           "name": "Get Property By Id",
           "request": {
             "method": "GET",
@@ -358,7 +369,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"monthlyRent\": 26000,\n  \"status\": \"PUBLISHED\"\n}"
+              "raw": "{\n  \"monthlyRent\": 26000\n}"
             },
             "url": "{{baseUrl}}/properties/{{propertyId}}"
           }
@@ -691,7 +702,8 @@
           "request": {
             "method": "GET",
             "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
-            "url": "{{baseUrl}}/admin/users"
+            "url": "{{baseUrl}}/admin/users?page=1&limit=20",
+            "description": "Optional query: search (name/email/phone), role=ADMIN|LANDLORD|TENANT, status=ACTIVE|BLOCKED, page, limit (max 100). Without limit the full list is returned."
           }
         },
         {
@@ -765,7 +777,7 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"landlord@example.com\",\n  \"password\": \"Password123!\"\n}"
+              "raw": "{\n  \"email\": \"landlord@housing.com\",\n  \"password\": \"Landlord123!\"\n}"
             },
             "url": "{{baseUrl}}/auth/login"
           }
@@ -777,7 +789,7 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"tenant@example.com\",\n  \"password\": \"Password123!\"\n}"
+              "raw": "{\n  \"email\": \"tenant@housing.com\",\n  \"password\": \"Tenant123!\"\n}"
             },
             "url": "{{baseUrl}}/auth/login"
           }

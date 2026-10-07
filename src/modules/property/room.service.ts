@@ -1,10 +1,11 @@
+import { RentalRequestStatus } from "@prisma/client";
 import httpStatus from "http-status";
 import type { z } from "zod";
 import { prisma } from "../../lib/prisma.js";
 import type { AuthUser } from "../../types/auth.js";
 import { AppError } from "../../utils/AppError.js";
 import { createAuditLog } from "../../utils/audit.js";
-import { PropertyService } from "./property.service.js";
+import { ACTIVE_BOOKING_STATUSES, PropertyService } from "./property.service.js";
 import type { createRoomSchema, updateRoomSchema } from "./room.schema.js";
 
 type CreateRoomInput = z.infer<typeof createRoomSchema>;
@@ -21,6 +22,12 @@ const roomSelect = {
 	createdAt: true,
 	updatedAt: true,
 } as const;
+
+const findActiveBooking = (roomId: string) =>
+	prisma.booking.findFirst({
+		where: { roomId, deletedAt: null, status: { in: ACTIVE_BOOKING_STATUSES } },
+		select: { id: true },
+	});
 
 const createRoom = async (propertyId: string, user: AuthUser, payload: CreateRoomInput) => {
 	await PropertyService.assertPropertyOwner(propertyId, user);
@@ -44,15 +51,8 @@ const createRoom = async (propertyId: string, user: AuthUser, payload: CreateRoo
 	return room;
 };
 
-const getRoomsByProperty = async (propertyId: string) => {
-	const property = await prisma.property.findFirst({
-		where: { id: propertyId, deletedAt: null },
-		select: { id: true },
-	});
-
-	if (!property) {
-		throw new AppError(httpStatus.NOT_FOUND, "Property not found");
-	}
+const getRoomsByProperty = async (propertyId: string, user?: AuthUser) => {
+	await PropertyService.assertPropertyVisible(propertyId, user);
 
 	return prisma.room.findMany({
 		where: { propertyId, deletedAt: null },
@@ -72,6 +72,13 @@ const updateRoom = async (roomId: string, user: AuthUser, payload: UpdateRoomInp
 	}
 
 	await PropertyService.assertPropertyOwner(room.propertyId, user);
+
+	if (payload.available === true && !room.available && (await findActiveBooking(roomId))) {
+		throw new AppError(
+			httpStatus.CONFLICT,
+			"Room has an active booking and cannot be marked available",
+		);
+	}
 
 	const updated = await prisma.room.update({
 		where: { id: roomId },
@@ -100,13 +107,29 @@ const deleteRoom = async (roomId: string, user: AuthUser) => {
 
 	await PropertyService.assertPropertyOwner(room.propertyId, user);
 
-	const deleted = await prisma.room.update({
-		where: { id: roomId },
-		data: {
-			deletedAt: new Date(),
-			available: false,
-		},
-		select: roomSelect,
+	if (await findActiveBooking(roomId)) {
+		throw new AppError(
+			httpStatus.CONFLICT,
+			"Room has an active booking. Cancel it before deleting the room",
+		);
+	}
+
+	const { deleted, rejectedRequests } = await prisma.$transaction(async (tx) => {
+		const rejected = await tx.rentalRequest.updateMany({
+			where: { roomId, status: RentalRequestStatus.PENDING },
+			data: { status: RentalRequestStatus.REJECTED },
+		});
+
+		const softDeleted = await tx.room.update({
+			where: { id: roomId },
+			data: {
+				deletedAt: new Date(),
+				available: false,
+			},
+			select: roomSelect,
+		});
+
+		return { deleted: softDeleted, rejectedRequests: rejected.count };
 	});
 
 	await createAuditLog({
@@ -114,6 +137,7 @@ const deleteRoom = async (roomId: string, user: AuthUser) => {
 		action: "ROOM_DELETED",
 		entity: "Room",
 		entityId: roomId,
+		metadata: { rejectedRequests },
 	});
 
 	return deleted;

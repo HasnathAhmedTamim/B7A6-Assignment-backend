@@ -6,6 +6,7 @@ import { validateRequest } from "../../middlewares/validation.middleware.js";
 import { AdminController } from "./admin.controller.js";
 import {
 	adminUserIdSchema,
+	adminUserQuerySchema,
 	auditLogQuerySchema,
 	updateUserRoleSchema,
 	updateUserStatusSchema,
@@ -15,7 +16,7 @@ const router = Router();
 
 router.use(authenticate, authorize(Role.ADMIN));
 
-router.get("/users", AdminController.getUsers);
+router.get("/users", validateRequest(adminUserQuerySchema, "query"), AdminController.getUsers);
 router.patch(
 	"/users/:id/status",
 	validateRequest(adminUserIdSchema, "params"),

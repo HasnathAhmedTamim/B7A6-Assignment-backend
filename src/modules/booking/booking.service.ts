@@ -5,6 +5,7 @@ import { prisma } from "../../lib/prisma.js";
 import type { AuthUser } from "../../types/auth.js";
 import { AppError } from "../../utils/AppError.js";
 import { createAuditLog } from "../../utils/audit.js";
+import { PaymentService } from "../payment/payment.service.js";
 
 export const bookingIdSchema = z.object({
 	id: z.string().uuid(),
@@ -22,6 +23,14 @@ const bookingSelect = {
 	status: true,
 	createdAt: true,
 	updatedAt: true,
+	tenant: {
+		select: {
+			id: true,
+			name: true,
+			email: true,
+			phone: true,
+		},
+	},
 	property: {
 		select: {
 			id: true,
@@ -83,6 +92,11 @@ const getBookingById = async (bookingId: string, user: AuthUser) => {
 	return booking;
 };
 
+const CANCELLABLE_STATUSES: BookingStatus[] = [
+	BookingStatus.PENDING_PAYMENT,
+	BookingStatus.CONFIRMED,
+];
+
 const cancelBooking = async (bookingId: string, user: AuthUser) => {
 	const booking = await prisma.booking.findFirst({
 		where: { id: bookingId, deletedAt: null },
@@ -100,23 +114,29 @@ const cancelBooking = async (bookingId: string, user: AuthUser) => {
 		throw new AppError(httpStatus.FORBIDDEN, "You cannot cancel this booking");
 	}
 
-	if (booking.status === BookingStatus.CANCELLED || booking.status === BookingStatus.COMPLETED) {
+	if (!CANCELLABLE_STATUSES.includes(booking.status)) {
 		throw new AppError(httpStatus.CONFLICT, `Cannot cancel booking with status ${booking.status}`);
 	}
 
+	// Close open checkouts first so an old checkout tab cannot charge for a cancelled booking
+	await PaymentService.supersedeOpenCheckouts(bookingId, false);
+
 	const updated = await prisma.$transaction(async (tx) => {
-		const cancelled = await tx.booking.update({
-			where: { id: bookingId },
+		const cancelled = await tx.booking.updateMany({
+			where: { id: bookingId, status: { in: CANCELLABLE_STATUSES } },
 			data: { status: BookingStatus.CANCELLED },
-			select: bookingSelect,
 		});
 
-		await tx.room.update({
-			where: { id: booking.roomId },
+		if (cancelled.count !== 1) {
+			throw new AppError(httpStatus.CONFLICT, "Booking can no longer be cancelled");
+		}
+
+		await tx.room.updateMany({
+			where: { id: booking.roomId, deletedAt: null },
 			data: { available: true },
 		});
 
-		return cancelled;
+		return tx.booking.findUniqueOrThrow({ where: { id: bookingId }, select: bookingSelect });
 	});
 
 	await createAuditLog({

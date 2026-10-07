@@ -10,8 +10,11 @@ export const signAccessToken = (payload: AuthUser) => {
 };
 
 export const signRefreshToken = (payload: { id: string }) => {
+	// A unique jti keeps tokens issued for the same user within one second distinct,
+	// since refresh tokens are stored by unique hash.
 	return jwt.sign(payload, config.jwt.refreshSecret, {
 		expiresIn: config.jwt.refreshExpiresIn,
+		jwtid: crypto.randomUUID(),
 	} as SignOptions);
 };
 

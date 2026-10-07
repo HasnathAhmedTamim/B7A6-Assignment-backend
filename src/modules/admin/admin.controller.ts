@@ -2,15 +2,16 @@ import type { Request, Response } from "express";
 import httpStatus from "http-status";
 import { catchAsync } from "../../utils/catchAsync.js";
 import { sendResponse } from "../../utils/sendResponse.js";
-import { AdminService } from "./admin.service.js";
+import { AdminService, type AdminUserQuery } from "./admin.service.js";
 
-const getUsers = catchAsync(async (_req: Request, res: Response) => {
-	const data = await AdminService.getUsers();
+const getUsers = catchAsync(async (req: Request, res: Response) => {
+	const result = await AdminService.getUsers(req.query as unknown as AdminUserQuery);
 	sendResponse({
 		res,
 		statusCode: httpStatus.OK,
 		message: "Users fetched successfully",
-		data,
+		meta: result.meta,
+		data: result.data,
 	});
 });
 

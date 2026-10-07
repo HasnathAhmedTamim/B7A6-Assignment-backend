@@ -1,10 +1,11 @@
-import { Role, UserStatus } from "@prisma/client";
+import { type Prisma, Role, UserStatus } from "@prisma/client";
 import httpStatus from "http-status";
 import { z } from "zod";
 import { prisma } from "../../lib/prisma.js";
 import type { AuthUser } from "../../types/auth.js";
 import { AppError } from "../../utils/AppError.js";
 import { createAuditLog } from "../../utils/audit.js";
+import { isProtectedDemoAccount } from "../../utils/demo.js";
 
 export const adminUserIdSchema = z.object({
 	id: z.string().uuid(),
@@ -23,20 +24,63 @@ export const auditLogQuerySchema = z.object({
 	limit: z.coerce.number().int().min(1).max(100).default(20),
 });
 
-const getUsers = async () => {
-	return prisma.user.findMany({
-		where: { deletedAt: null },
-		select: {
-			id: true,
-			name: true,
-			email: true,
-			phone: true,
-			role: true,
-			status: true,
-			createdAt: true,
+// Pagination is opt-in: without `limit` the full list is returned, as before.
+export const adminUserQuerySchema = z.object({
+	search: z.string().trim().min(1).max(100).optional(),
+	role: z.nativeEnum(Role).optional(),
+	status: z.nativeEnum(UserStatus).optional(),
+	page: z.coerce.number().int().min(1).default(1),
+	limit: z.coerce.number().int().min(1).max(100).optional(),
+});
+
+export type AdminUserQuery = z.infer<typeof adminUserQuerySchema>;
+
+const getUsers = async ({ search, role, status, page, limit }: AdminUserQuery) => {
+	const where: Prisma.UserWhereInput = {
+		deletedAt: null,
+		...(role ? { role } : {}),
+		...(status ? { status } : {}),
+		...(search
+			? {
+					OR: [
+						{ name: { contains: search, mode: "insensitive" } },
+						{ email: { contains: search, mode: "insensitive" } },
+						{ phone: { contains: search } },
+					],
+				}
+			: {}),
+	};
+
+	const [total, data] = await prisma.$transaction([
+		prisma.user.count({ where }),
+		prisma.user.findMany({
+			where,
+			select: {
+				id: true,
+				name: true,
+				email: true,
+				phone: true,
+				role: true,
+				status: true,
+				authProvider: true,
+				profileImage: true,
+				createdAt: true,
+			},
+			orderBy: { createdAt: "desc" },
+			...(limit ? { skip: (page - 1) * limit, take: limit } : {}),
+		}),
+	]);
+
+	const pageSize = limit ?? Math.max(total, 1);
+	return {
+		meta: {
+			page: limit ? page : 1,
+			limit: pageSize,
+			total,
+			totalPages: Math.max(Math.ceil(total / pageSize), 1),
 		},
-		orderBy: { createdAt: "desc" },
-	});
+		data,
+	};
 };
 
 const updateUserStatus = async (admin: AuthUser, userId: string, status: UserStatus) => {
@@ -50,6 +94,10 @@ const updateUserStatus = async (admin: AuthUser, userId: string, status: UserSta
 
 	if (!user) {
 		throw new AppError(httpStatus.NOT_FOUND, "User not found");
+	}
+
+	if (isProtectedDemoAccount(user.email)) {
+		throw new AppError(httpStatus.FORBIDDEN, "Demo accounts cannot be blocked or activated");
 	}
 
 	const updated = await prisma.user.update({
@@ -86,6 +134,10 @@ const updateUserRole = async (admin: AuthUser, userId: string, role: Role) => {
 
 	if (!user) {
 		throw new AppError(httpStatus.NOT_FOUND, "User not found");
+	}
+
+	if (isProtectedDemoAccount(user.email)) {
+		throw new AppError(httpStatus.FORBIDDEN, "Demo account roles cannot be changed");
 	}
 
 	const updated = await prisma.user.update({

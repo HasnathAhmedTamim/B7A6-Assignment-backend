@@ -8,6 +8,9 @@ import type {
 	PaymentGatewayService,
 } from "./payment-gateway.interface.js";
 
+/** bKash charges whole BDT; the callback must compare against this same value. */
+export const toBkashAmount = (amount: number) => Math.max(1, Math.round(amount));
+
 export class BkashGateway implements PaymentGatewayService {
 	async createCheckoutSession(input: CreateCheckoutInput): Promise<CreateCheckoutResult> {
 		if (
@@ -35,12 +38,10 @@ export class BkashGateway implements PaymentGatewayService {
 				payerReference: "01770618575",
 				callbackURL: `${config.bkash.callbackUrl}/payments/bkash/callback`,
 				// Sandbox wallets only support small amounts reliably
-				amount: String(Math.max(1, Math.round(Number(input.amount)))),
+				amount: String(toBkashAmount(Number(input.amount))),
 				currency: "BDT",
 				intent: "sale",
-				merchantInvoiceNumber: input.merchantReference
-					.replace(/[^a-zA-Z0-9_-]/g, "")
-					.slice(0, 255),
+				merchantInvoiceNumber: input.merchantReference.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 255),
 			}),
 		});
 
