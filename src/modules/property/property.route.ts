@@ -1,5 +1,6 @@
 import { Role } from "@prisma/client";
 import { Router } from "express";
+import { upload } from "../../lib/multer.js";
 import { authenticate, optionalAuthenticate } from "../../middlewares/auth.middleware.js";
 import { authorize } from "../../middlewares/rbac.middleware.js";
 import { validateRequest } from "../../middlewares/validation.middleware.js";
@@ -11,9 +12,11 @@ import {
 	propertyQuerySchema,
 	updatePropertySchema,
 } from "./property.schema.js";
+import { MAX_PROPERTY_IMAGES } from "./propertyImage.service.js";
 import {
 	createRoomSchema,
 	propertyIdParamSchema,
+	propertyImageParamSchema,
 	roomIdParamSchema,
 	updateRoomSchema,
 } from "./room.schema.js";
@@ -66,6 +69,23 @@ router.delete(
 	authorize(Role.LANDLORD, Role.ADMIN),
 	validateRequest(propertyIdParamsSchema, "params"),
 	PropertyController.deleteProperty,
+);
+
+router.post(
+	"/:propertyId/images",
+	authenticate,
+	authorize(Role.LANDLORD, Role.ADMIN),
+	validateRequest(propertyIdParamSchema, "params"),
+	upload.array("images", MAX_PROPERTY_IMAGES),
+	PropertyController.addImages,
+);
+
+router.delete(
+	"/:propertyId/images/:imageId",
+	authenticate,
+	authorize(Role.LANDLORD, Role.ADMIN),
+	validateRequest(propertyImageParamSchema, "params"),
+	PropertyController.deleteImage,
 );
 
 router.post(

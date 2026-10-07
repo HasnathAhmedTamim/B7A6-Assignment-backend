@@ -1,6 +1,6 @@
 import httpStatus from "http-status";
 import type { z } from "zod";
-import { cloudinary } from "../../lib/cloudinary.js";
+import { destroyImage, uploadImage } from "../../lib/cloudinary.js";
 import { prisma } from "../../lib/prisma.js";
 import { AppError } from "../../utils/AppError.js";
 import { createAuditLog } from "../../utils/audit.js";
@@ -60,37 +60,17 @@ const uploadProfileImage = async (userId: string, file?: Express.Multer.File) =>
 		throw new AppError(httpStatus.NOT_FOUND, "User not found");
 	}
 
-	const uploaded = await new Promise<{ secure_url: string; public_id: string }>(
-		(resolve, reject) => {
-			const stream = cloudinary.uploader.upload_stream(
-				{
-					folder: "housing/profile",
-					resource_type: "image",
-				},
-				(error, result) => {
-					if (error || !result) {
-						reject(error ?? new Error("Cloudinary upload failed"));
-						return;
-					}
-					resolve({
-						secure_url: result.secure_url,
-						public_id: result.public_id,
-					});
-				},
-			);
-			stream.end(file.buffer);
-		},
-	);
+	const uploaded = await uploadImage(file.buffer, { folder: "housing/profile" });
 
 	if (existing.imagePublicId) {
-		await cloudinary.uploader.destroy(existing.imagePublicId).catch(() => undefined);
+		await destroyImage(existing.imagePublicId);
 	}
 
 	const user = await prisma.user.update({
 		where: { id: userId },
 		data: {
-			profileImage: uploaded.secure_url,
-			imagePublicId: uploaded.public_id,
+			profileImage: uploaded.url,
+			imagePublicId: uploaded.publicId,
 		},
 		select: userPublicSelect,
 	});

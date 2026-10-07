@@ -122,6 +122,7 @@ model Property {
 
   owner          User            @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   rooms          Room[]
+  images         PropertyImage[]
   rentalRequests RentalRequest[]
   bookings       Booking[]
 
@@ -131,6 +132,20 @@ model Property {
   @@index([monthlyRent])
   @@index([deletedAt])
   @@map("properties")
+}
+
+model PropertyImage {
+  id         String   @id @default(uuid())
+  propertyId String
+  url        String
+  publicId   String
+  position   Int      @default(0)
+  createdAt  DateTime @default(now())
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@index([propertyId, position])
+  @@map("property_images")
 }
 
 model Room {

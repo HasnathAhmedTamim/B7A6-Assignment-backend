@@ -59,6 +59,7 @@ A modular Express API for landlords to publish properties and rooms, tenants to 
 
 ### Housing domain
 - Property and room CRUD (landlord-owned); partial `PATCH` updates only touch the fields sent
+- Property photos on Cloudinary (up to 8 per property, resized on upload); every property response includes `images` in display order, the first being the cover
 - Public listings with search, filter, sort, and pagination (only `PUBLISHED` properties are public)
 - `GET /properties/my` — landlord's own properties in every status, paginated
 - Rental requests: create → approve / reject / cancel
@@ -88,7 +89,7 @@ A modular Express API for landlords to publish properties and rooms, tenants to 
 | Auth | JWT, bcrypt, Google Auth Library | Credentials + social login |
 | Cache | Redis | OTP storage, bKash token cache |
 | Email | Resend (production) / Gmail SMTP (local) + EJS | Transactional OTP |
-| Files | Multer + Cloudinary | Profile images |
+| Files | Multer + Cloudinary | Profile images, property photos |
 | Payments | Stripe, bKash | Real checkout + callbacks |
 | Security | Helmet, CORS, express-rate-limit | Hardening |
 | Quality | Biome | Lint / format |
@@ -131,7 +132,7 @@ POST /payments/initiate { bookingId, gateway }
 
 ```text
 1. ADMIN / demo LANDLORD / demo TENANT are seeded; ADMIN manages users and audits
-2. LANDLORD registers → creates Property (DRAFT) → adds Room(s) → PATCH status PUBLISHED
+2. LANDLORD registers → creates Property (DRAFT) → uploads photos → adds Room(s) → PATCH status PUBLISHED
 3. TENANT browses GET /properties (?search&city&minRent&page…)
 4. TENANT submits POST /rental-requests
 5. LANDLORD PATCH .../approve
@@ -249,6 +250,8 @@ Helpers: `GET /health`, `GET /`, `GET /google-signin` (dev Google ID token helpe
 | `POST` | `/properties` | Landlord / Admin | Create |
 | `PATCH` | `/properties/:id` | Owner / Admin | Update |
 | `DELETE` | `/properties/:id` | Owner / Admin | Soft delete |
+| `POST` | `/properties/:propertyId/images` | Owner / Admin | Upload photos (`images` form field, up to 8 per property) → Cloudinary |
+| `DELETE` | `/properties/:propertyId/images/:imageId` | Owner / Admin | Delete a photo (also removed from Cloudinary) |
 | `POST` | `/properties/:propertyId/rooms` | Owner / Admin | Add room |
 | `GET` | `/properties/:propertyId/rooms` | Public | List rooms (same visibility as the property) |
 | `PATCH` | `/rooms/:id` | Owner / Admin | Update room |

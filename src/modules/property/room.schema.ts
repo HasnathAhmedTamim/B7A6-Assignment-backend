@@ -27,6 +27,11 @@ export const propertyIdParamSchema = z.object({
 	propertyId: z.string().uuid(),
 });
 
+export const propertyImageParamSchema = z.object({
+	propertyId: z.string().uuid(),
+	imageId: z.string().uuid(),
+});
+
 export const roomIdParamSchema = z.object({
 	id: z.string().uuid(),
 });

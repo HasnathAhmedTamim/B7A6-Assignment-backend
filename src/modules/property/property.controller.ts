@@ -3,6 +3,7 @@ import httpStatus from "http-status";
 import { catchAsync } from "../../utils/catchAsync.js";
 import { sendResponse } from "../../utils/sendResponse.js";
 import { PropertyService } from "./property.service.js";
+import { PropertyImageService } from "./propertyImage.service.js";
 import { RoomService } from "./room.service.js";
 
 const createProperty = catchAsync(async (req: Request, res: Response) => {
@@ -71,6 +72,34 @@ const deleteProperty = catchAsync(async (req: Request, res: Response) => {
 	});
 });
 
+const addImages = catchAsync(async (req: Request, res: Response) => {
+	const images = await PropertyImageService.addImages(
+		req.params.propertyId as string,
+		req.user!,
+		req.files as Express.Multer.File[] | undefined,
+	);
+	sendResponse({
+		res,
+		statusCode: httpStatus.CREATED,
+		message: "Photos uploaded successfully",
+		data: images,
+	});
+});
+
+const deleteImage = catchAsync(async (req: Request, res: Response) => {
+	const images = await PropertyImageService.deleteImage(
+		req.params.propertyId as string,
+		req.params.imageId as string,
+		req.user!,
+	);
+	sendResponse({
+		res,
+		statusCode: httpStatus.OK,
+		message: "Photo deleted successfully",
+		data: images,
+	});
+});
+
 const createRoom = catchAsync(async (req: Request, res: Response) => {
 	const room = await RoomService.createRoom(req.params.propertyId as string, req.user!, req.body);
 	sendResponse({
@@ -118,6 +147,8 @@ export const PropertyController = {
 	getPropertyById,
 	updateProperty,
 	deleteProperty,
+	addImages,
+	deleteImage,
 	createRoom,
 	getRooms,
 	updateRoom,

@@ -20,6 +20,11 @@ type MyPropertyQuery = z.infer<typeof myPropertyQuerySchema>;
 
 export const ACTIVE_BOOKING_STATUSES = [BookingStatus.PENDING_PAYMENT, BookingStatus.CONFIRMED];
 
+export const propertyImagesSelect = {
+	select: { id: true, url: true, position: true },
+	orderBy: [{ position: "asc" }, { createdAt: "asc" }],
+} satisfies Prisma.PropertyImageFindManyArgs;
+
 const propertySelect = {
 	id: true,
 	ownerId: true,
@@ -43,6 +48,7 @@ const propertySelect = {
 			phone: true,
 		},
 	},
+	images: propertyImagesSelect,
 	_count: {
 		select: {
 			rooms: {

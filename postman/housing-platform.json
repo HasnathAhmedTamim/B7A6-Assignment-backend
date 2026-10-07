@@ -13,6 +13,7 @@
     { "key": "landlordToken", "value": "" },
     { "key": "tenantToken", "value": "" },
     { "key": "propertyId", "value": "" },
+    { "key": "propertyImageId", "value": "" },
     { "key": "roomId", "value": "" },
     { "key": "rentalRequestId", "value": "" },
     { "key": "bookingId", "value": "" },
@@ -372,6 +373,49 @@
               "raw": "{\n  \"monthlyRent\": 26000\n}"
             },
             "url": "{{baseUrl}}/properties/{{propertyId}}"
+          }
+        },
+        {
+          "name": "Upload Property Photos",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const images = pm.response.json().data;",
+                  "  if (images.length) pm.collectionVariables.set('propertyImageId', images[images.length - 1].id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{landlordToken}}" }],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "images",
+                  "type": "file",
+                  "src": [],
+                  "description": "Select one or more image files (repeat the key for each file)"
+                }
+              ]
+            },
+            "url": "{{baseUrl}}/properties/{{propertyId}}/images",
+            "description": "Owner or admin. Uploads to Cloudinary (max 8 photos per property, 5 MB each, images only). Returns the property's photos in display order; the first one is the cover."
+          }
+        },
+        {
+          "name": "Delete Property Photo",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{landlordToken}}" }],
+            "url": "{{baseUrl}}/properties/{{propertyId}}/images/{{propertyImageId}}",
+            "description": "Owner or admin. Removes the photo from the property and Cloudinary. Returns the remaining photos."
           }
         },
         {
