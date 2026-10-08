@@ -1,12 +1,12 @@
 {
   "info": {
     "name": "Housing & Roommate Platform API",
-    "description": "B7A6 full workflow collection.\n\n## Demo accounts (created by `npx prisma db seed`)\n- ADMIN: admin@housing.com / ChangeMeAdmin123!\n- LANDLORD: landlord@housing.com / Landlord123!\n- TENANT: tenant@housing.com / Tenant123!\n\n## Suggested test order\n1. Auth → Login Admin / Landlord / Tenant (demo accounts) or Register your own\n2. Copy accessToken into landlordToken / tenantToken / adminToken\n3. Landlord → Create Property (PUBLISHED) → Create Room\n4. Tenant → Create Rental Request\n5. Landlord → Approve Request (creates Booking)\n6. Tenant → Initiate Payment (STRIPE or BKASH)\n7. Admin → Dashboard / Users / Audit logs\n\nGoogle login: get idToken from http://localhost:5000/google-signin\nForgot password: credential users only (not Google-only).",
+    "description": "B7A6 full workflow collection.\n\n## Base URLs\nThe collection points at the live deployment by default:\n- baseUrl: https://b7a6-assignment-backend.onrender.com/api/v1\n- rootUrl: https://b7a6-assignment-backend.onrender.com\n\nFor a local backend, change them to http://localhost:5000/api/v1 and http://localhost:5000. The free Render instance can take up to a minute to answer the first request after it has been idle.\n\nFrontend: https://b7a7-assignment-frontend.onrender.com\n\n## Demo accounts (created by `npx prisma db seed`)\n- ADMIN: admin@housing.com / ChangeMeAdmin123!\n- LANDLORD: landlord@housing.com / Landlord123!\n- TENANT: tenant@housing.com / Tenant123!\n\n## Suggested test order\n1. Auth → Login Admin / Landlord / Tenant (demo accounts) or Register your own. The login and register requests save the tokens into adminToken / landlordToken / tenantToken automatically.\n2. Landlord → Create Property (PUBLISHED) → Upload Property Photos → Create Room\n3. Tenant → Create Rental Request\n4. Landlord → Approve Request (creates Booking)\n5. Tenant → Initiate Payment (STRIPE or BKASH)\n6. Admin → Dashboard / Users / Audit logs\n\nGoogle login: the frontend sends the Google ID token to POST /auth/google. To call it from Postman, get an idToken from http://localhost:5000/google-signin while running the backend locally.\nForgot password: credential users only (not Google-only). In demo email mode the OTP is delivered to the project's demo inbox instead of the entered address.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
-    { "key": "baseUrl", "value": "http://localhost:5000/api/v1" },
-    { "key": "rootUrl", "value": "http://localhost:5000" },
+    { "key": "baseUrl", "value": "https://b7a6-assignment-backend.onrender.com/api/v1" },
+    { "key": "rootUrl", "value": "https://b7a6-assignment-backend.onrender.com" },
     { "key": "accessToken", "value": "" },
     { "key": "refreshToken", "value": "" },
     { "key": "adminToken", "value": "" },
@@ -188,15 +188,30 @@
         },
         {
           "name": "Google Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const d = pm.response.json().data;",
+                  "  pm.collectionVariables.set('accessToken', d.accessToken);",
+                  "  pm.collectionVariables.set('refreshToken', d.refreshToken);",
+                  "}"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"idToken\": \"PASTE_REAL_GOOGLE_ID_TOKEN_FROM_/google-signin\"\n}"
+              "raw": "{\n  \"idToken\": \"PASTE_REAL_GOOGLE_ID_TOKEN_FROM_/google-signin\",\n  \"role\": \"TENANT\"\n}"
             },
             "url": "{{baseUrl}}/auth/google",
-            "description": "Open {{rootUrl}}/google-signin in browser, sign in, copy token here."
+            "description": "Signs in with a Google ID token; the account is created on first sign-in and linked by email if it already exists.\n\n- idToken (required): run the backend locally, open http://localhost:5000/google-signin, sign in and copy the token. The token must be issued for the backend's GOOGLE_CLIENT_ID.\n- role (optional): LANDLORD or TENANT. Only used when this sign-in creates a new account; defaults to TENANT. Existing accounts keep their role.\n\nReturns 503 \"Google login is not configured\" when GOOGLE_CLIENT_ID is not set, and 401 \"Invalid Google token\" for an invalid or expired token."
           }
         },
         {
@@ -221,7 +236,7 @@
               "raw": "{\n  \"email\": \"tenant@example.com\"\n}"
             },
             "url": "{{baseUrl}}/auth/forgot-password",
-            "description": "Sends 6-digit OTP to email (Redis). Google-only users are rejected."
+            "description": "Sends a 6-digit OTP by email (stored in Redis, valid for 5 minutes). Google-only users are rejected.\n\nThe response data includes email, expiresInSeconds, emailSent, deliveredTo and redirected. In demo email mode (Resend sandbox with RESEND_TEST_TO set) every OTP goes to the demo inbox: redirected is true, deliveredTo is that inbox, and the message reads \"OTP sent to the demo inbox ...\"."
           }
         },
         {
@@ -659,7 +674,7 @@
               "raw": "{\n  \"bookingId\": \"{{bookingId}}\",\n  \"gateway\": \"STRIPE\"\n}"
             },
             "url": "{{baseUrl}}/payments/initiate",
-            "description": "Open checkoutUrl in browser. Keep `stripe listen` running for webhook."
+            "description": "Creates a Stripe Checkout session for the booking (charged in STRIPE_CURRENCY, BDT by default). Open checkoutUrl in a browser and pay with the test card 4242 4242 4242 4242, any future date and any CVC. Stripe then calls the webhook to mark the payment PAID; when running locally keep `stripe listen --forward-to localhost:5000/api/v1/payments/webhook` running."
           }
         },
         {
@@ -702,6 +717,15 @@
             "header": [],
             "url": "{{baseUrl}}/payments/bkash/callback?paymentID=PAYMENT_ID&status=success",
             "description": "Called by bKash after payment. Do not call manually unless debugging."
+          }
+        },
+        {
+          "name": "Stripe Webhook (docs only)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/payments/webhook",
+            "description": "Called by Stripe with a signed event (verified with STRIPE_WEBHOOK_SECRET); checkout.session.completed marks the payment PAID, and failed or expired sessions are recorded too. Requests without a valid Stripe-Signature header are rejected, so do not call it manually."
           }
         },
         {
