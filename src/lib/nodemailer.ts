@@ -186,11 +186,13 @@ export const sendMailWithTimeout = async (
 	options: SendMailOptions,
 	timeoutMs = 20_000,
 ): Promise<SendMailResult> => {
-	if (config.resend.apiKey) {
-		return sendViaResendApi(options);
-	}
+	// Brevo first: it delivers to any recipient, while Resend without a verified domain
+	// only reaches the account owner's inbox.
 	if (config.brevo.apiKey) {
 		return sendViaBrevoApi(options);
+	}
+	if (config.resend.apiKey) {
+		return sendViaResendApi(options);
 	}
 
 	if (!config.smtp.user || !config.smtp.password) {

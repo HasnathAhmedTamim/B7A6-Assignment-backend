@@ -501,25 +501,25 @@ POST /auth/reset-password { email, otp, newPassword }
 | Environment | Provider |
 |-------------|----------|
 | Local | Gmail SMTP via Nodemailer |
-| Render | [Resend](https://resend.com) HTTPS API |
+| Render | [Brevo](https://www.brevo.com) HTTPS API (delivers to every user), or [Resend](https://resend.com) as a demo fallback |
 
-Render free tier blocks outbound SMTP (`25` / `465` / `587`). Production mail uses Resend on port `443`.
+Render free tier blocks outbound SMTP (`25` / `465` / `587`), so production mail goes over HTTPS on port `443`. When `BREVO_API_KEY` is set it is used first; otherwise Resend.
 
 | Variable | Purpose |
 |----------|---------|
+| `BREVO_API_KEY` | Brevo API key; sends the OTP to the user's own email |
+| `SMTP_FROM` | Sender for Brevo, a verified Brevo sender (e.g. `NestQuarter <you@gmail.com>`) |
 | `RESEND_API_KEY` | Resend API key |
 | `RESEND_FROM` | Sender (e.g. `Housing Platform <onboarding@resend.dev>`) |
 | `RESEND_TEST_TO` | Redirect OTP mail to your Resend account email (required on free tier) |
 | `ALLOW_OTP_IN_RESPONSE` | Default `false`. If `true` and sending fails, `otp` is returned in the JSON body. Local debugging only: in production it lets anyone reset any account's password |
 
-With `onboarding@resend.dev`, Resend only delivers to the account owner unless a custom domain is verified. `RESEND_TEST_TO` delivers the **same OTP** stored in Redis and notes the intended account in the email body.
+With `onboarding@resend.dev`, Resend only delivers to the account owner unless a custom domain is verified. `RESEND_TEST_TO` delivers the **same OTP** stored in Redis and notes the intended account in the email body; the API then answers `redirected: true` without revealing that inbox.
 
-- `emailSent: true` → use the code from email (optional `deliveredTo` field).
+- `emailSent: true` → use the code from email (`deliveredTo` is the user's email, or `redirected: true` in Resend demo mode).
 - `emailSent: false` → only when `ALLOW_OTP_IN_RESPONSE=true`: use `data.otp` from the API response.
 
 After 5 wrong OTPs the code is invalidated and a new one must be requested.
-
-Optional alternative: `BREVO_API_KEY` (Brevo HTTPS).
 
 ---
 

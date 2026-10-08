@@ -12,14 +12,14 @@ const startServer = async () => {
 		await redisClient.connect();
 		console.log("Connected to Redis");
 
-		if (config.resend.apiKey) {
+		if (config.brevo.apiKey) {
+			console.log("Email ready via Brevo API (HTTPS) — delivers to every recipient");
+		} else if (config.resend.apiKey) {
 			console.log(
 				config.resend.testTo
 					? `Email ready via Resend API (HTTPS) — OTP redirect to ${config.resend.testTo}`
 					: "Email ready via Resend API (HTTPS) — works on Render",
 			);
-		} else if (config.brevo.apiKey) {
-			console.log("Email ready via Brevo API (HTTPS) — works on Render");
 		} else if (config.smtp.user && config.smtp.password) {
 			try {
 				await transporter.verify();
