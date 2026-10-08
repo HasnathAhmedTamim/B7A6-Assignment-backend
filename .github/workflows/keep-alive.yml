@@ -1,0 +1,17 @@
+# Render's free plan sleeps a service after 15 minutes without requests, and waking it
+# takes 20+ seconds. Pinging the health check keeps the API responsive. One service
+# awake all month (~744 h) fits the 750 free instance hours per workspace.
+name: Keep backend awake
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Ping health check
+        run: curl --fail --silent --show-error --max-time 90 --retry 2 https://b7a6-assignment-backend.onrender.com/health
