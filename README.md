@@ -514,9 +514,9 @@ Render free tier blocks outbound SMTP (`25` / `465` / `587`), so production mail
 | `RESEND_TEST_TO` | Redirect OTP mail to your Resend account email (required on free tier) |
 | `ALLOW_OTP_IN_RESPONSE` | Default `false`. If `true` and sending fails, `otp` is returned in the JSON body. Local debugging only: in production it lets anyone reset any account's password |
 
-With `onboarding@resend.dev`, Resend only delivers to the account owner unless a custom domain is verified. `RESEND_TEST_TO` delivers the **same OTP** stored in Redis and notes the intended account in the email body; the API then answers `redirected: true` without revealing that inbox.
+With `onboarding@resend.dev`, Resend only delivers to the account owner unless a custom domain is verified. `RESEND_TEST_TO` delivers the **same OTP** stored in Redis and notes the intended account in the email body; the API then answers `redirected: true` with that inbox in `deliveredTo`.
 
-- `emailSent: true` → use the code from email (`deliveredTo` is the user's email, or `redirected: true` in Resend demo mode).
+- `emailSent: true` → use the code from the email sent to `deliveredTo`.
 - `emailSent: false` → only when `ALLOW_OTP_IN_RESPONSE=true`: use `data.otp` from the API response.
 
 After 5 wrong OTPs the code is invalidated and a new one must be requested.

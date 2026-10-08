@@ -401,20 +401,20 @@ const forgotPassword = async (payload: ForgotPasswordInput) => {
 		metadata: { emailSent, deliveredTo },
 	});
 
-	// When email succeeds, OTP is only in the inbox (same value as Redis) — never also in JSON.
-	// A redirected delivery (Resend sandbox) must not reveal the owner's inbox to the requester.
+	// When email succeeds, OTP is only in the inbox (same value as Redis) — never also in JSON
 	if (emailSent) {
 		const redirected = Boolean(deliveredTo && deliveredTo !== email);
 		return {
 			email,
 			expiresInSeconds: FORGOT_PASSWORD_OTP_TTL,
 			emailSent: true as const,
+			deliveredTo: deliveredTo ?? email,
 			redirected,
 			...(redirected
 				? {
-						note: `Demo email mode: the OTP for ${email} was sent to the site owner's inbox instead.`,
+						note: `Demo email mode: the OTP for ${email} was sent to ${deliveredTo}.`,
 					}
-				: { deliveredTo: email }),
+				: {}),
 		};
 	}
 
