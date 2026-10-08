@@ -16,7 +16,7 @@ A modular Express API for landlords to publish properties and rooms, tenants to 
 | **Frontend (B7A7)** | [Live site](https://b7a7-assignment-frontend.onrender.com) · [Repository](https://github.com/HasnathAhmedTamim/B7A7-Assignment-frontend) |
 | **API base path** | `/api/v1` |
 | **Health check** | [GET /health](https://b7a6-assignment-backend.onrender.com/health) |
-| **API documentation** | [Postman Documenter](https://documenter.getpostman.com/view/31892953/2sBYAxP9Sg) |
+| **API documentation** | [Postman Documenter](https://documenter.getpostman.com/view/31892953/2sBYHQ12bk) |
 | **Demo video** | [Google Drive (assignment6-backend.mp4)](https://drive.google.com/file/d/1r1RS6bkx_p_TJbu0j-YgWuVCGmfh-GA1/view?usp=sharing) |
 
 > Free Render instances may take 30–60 seconds to wake after idle. Hit `/health` once before testing.
@@ -442,7 +442,7 @@ npm run dev
 
 ### Postman
 
-1. Import `postman/housing-platform.json`, or use the [published docs](https://documenter.getpostman.com/view/31892953/2sBYAxP9Sg).
+1. Import `postman/housing-platform.json`, or use the [published docs](https://documenter.getpostman.com/view/31892953/2sBYHQ12bk).
 2. Set `baseUrl` to local or `https://b7a6-assignment-backend.onrender.com/api/v1`.
 3. Walk folders **0 → 7** (Auth → Property → Rental → Payment → Admin).
 
