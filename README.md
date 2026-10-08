@@ -226,7 +226,7 @@ Helpers: `GET /health`, `GET /`, `GET /google-signin` (dev Google ID token helpe
 |--------|------|--------|-------------|
 | `POST` | `/auth/register` | Public | Register (`TENANT` / `LANDLORD`) |
 | `POST` | `/auth/login` | Public | Email/password login |
-| `POST` | `/auth/google` | Public | Google ID token login |
+| `POST` | `/auth/google` | Public | Google ID token login; optional `role` (`TENANT`/`LANDLORD`) for new accounts |
 | `POST` | `/auth/refresh-token` | Public | Rotate access token |
 | `POST` | `/auth/logout` | Access token and/or `refreshToken` | With `refreshToken`: revoke that session. With only an access token: revoke all sessions |
 | `POST` | `/auth/forgot-password` | Public | Send OTP email |

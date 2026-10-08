@@ -203,7 +203,7 @@ const googleLogin = async (payload: GoogleLoginInput) => {
 				email,
 				googleId: googlePayload.sub,
 				profileImage: googlePayload.picture,
-				role: Role.TENANT,
+				role: payload.role ?? Role.TENANT,
 				authProvider: AuthProvider.GOOGLE,
 				emailVerified: true,
 			},

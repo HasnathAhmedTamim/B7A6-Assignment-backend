@@ -16,6 +16,8 @@ export const loginSchema = z.object({
 
 export const googleLoginSchema = z.object({
 	idToken: z.string().min(10),
+	/** Only used when this Google sign-in creates a new account. */
+	role: z.enum([Role.LANDLORD, Role.TENANT]).optional(),
 });
 
 export const refreshTokenSchema = z.object({
